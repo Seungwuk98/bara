@@ -8,5 +8,6 @@ target_link_libraries(
   BaraAST
   PRIVATE 
   BaraContext
+  ${llvm_libs}
 )
 

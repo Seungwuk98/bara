@@ -1,54 +1,83 @@
 #ifndef BARA_AST_H
 #define BARA_AST_H
 
+#include "bara/ast/ASTPrinter.h"
 #include "bara/utils/LLVM.h"
 #include "bara/utils/STL.h"
 
 namespace bara {
-class ASTContext;
-class DeclarationStatement;
-class AssignmentStatement;
-class OperatorAssignmentStatement;
 
-enum class ASTKind {
-  Program,
-  CompoundStatement,
-  ExpressionStatement,
-  IfStatement,
-  WhileStatement,
-  ForStatement,
-  BreakStatement,
-  ContinueStatement,
-  ReturnStatement,
-  DeclarationStatement,
-  AssignmentStatement,
-  OperatorAssignmentStatement,
-  FunctionDeclaration,
-  MatchExpression,
-  BinaryExpression,
-  UnaryExpression,
-  CallExpression,
-  ArrayExpression,
-  IndexExpression,
-  IdentifierExpression,
-  TupleExpression,
-  GroupExpression,
-  IntegerLiteral,
-  BooleanLiteral,
-  FloatLiteral,
-  StringLiteral,
-  NilLiteral,
-  IdentifierPattern,
-  TuplePattern,
+class Visitor;
+class ConstVisitor;
+
+#define AST_KIND(NAME) class NAME;
+#include "bara/ast/AST.def"
+
+class ASTContext;
+
+enum class ASTKind : uint16_t {
+#define AST_KIND(NAME) NAME,
+#include "bara/ast/AST.def"
+
+  NUM_OF_AST,
 };
+
+namespace _inner {
+template <typename T>
+struct ASTKindMap {};
+
+#define AST_KIND(NAME)                                                         \
+  template <>                                                                  \
+  struct ASTKindMap<NAME> {                                                    \
+    static constexpr ASTKind value = ASTKind::NAME;                            \
+  };
+#include "bara/ast/AST.def"
+} // namespace _inner
 
 class AST {
 public:
-  template <typename U> bool isa(ASTKind kind) const { return isa<U>(this); }
-  template <typename U> U *cast(ASTKind kind) const { return cast<U>(this); }
-  template <typename U> U *dyn_cast(ASTKind kind) const {
-    return dyn_cast<U>(this);
+  template <typename... U>
+  bool isa() const {
+    return llvm::isa<U...>(this);
   }
+  template <typename U>
+  const U *cast() const {
+    return llvm::cast<U>(this);
+  }
+  template <typename U>
+  U *cast() {
+    return llvm::cast<U>(this);
+  }
+  template <typename U>
+  const U *dyn_cast() const {
+    return llvm::dyn_cast<U>(this);
+  }
+  template <typename U>
+  U *dyn_cast() {
+    return llvm::dyn_cast<U>(this);
+  }
+
+  ASTKind getKind() const { return kind; }
+
+  void accept(Visitor &visitor);
+  void accept(ConstVisitor &visitor) const;
+
+  string toString() const {
+    string str;
+    raw_string_ostream os(str);
+    ASTPrinter printer(os);
+    print(printer);
+    return os.str();
+  }
+
+  void print(ASTPrinter &printer) const;
+
+  void print() const {
+    ASTPrinter printer(errs());
+    print(printer);
+  }
+
+  bool isEqual(const AST *other) const;
 
 protected:
   AST(SMRange range, ASTKind kind) : range(range), kind(kind) {};
@@ -56,6 +85,16 @@ protected:
 private:
   SMRange range;
   ASTKind kind;
+};
+
+template <typename ConcreteType, typename ParentType>
+class ASTBase : public ParentType {
+public:
+  using ParentType::ParentType;
+
+  static bool classof(const AST *ast) {
+    return ast->getKind() == _inner::ASTKindMap<ConcreteType>::value;
+  }
 };
 
 class Statement : public AST {
@@ -88,6 +127,7 @@ enum class Operator {
   Mul,    // *
   Div,    // /
   Mod,    // %
+  Assign, // =
   Eq,     // ==
   Ne,     // !=
   Lt,     // <
@@ -99,14 +139,16 @@ enum class Operator {
   BitAnd, // &
   BitOr,  // |
   BitXor, // ^
+  BitNot, // ~
   Shl,    // <<
   Shr,    // >>
 };
 
 /// Program ::= Statement*
-class Program final : public AST, public TrailingObjects<Program, Statement *> {
+class Program final : public ASTBase<Program, AST>,
+                      public TrailingObjects<Program, Statement *> {
   Program(SMRange range, size_t size)
-      : AST(range, ASTKind::Program), size(size) {}
+      : ASTBase(range, ASTKind::Program), size(size) {}
 
 public:
   static Program *create(SMRange range, ASTContext *context,
@@ -125,10 +167,10 @@ private:
 
 /// CompoundStatement ::= '{' Statement* '}'
 class CompoundStatement final
-    : public Statement,
+    : public ASTBase<CompoundStatement, Statement>,
       public TrailingObjects<CompoundStatement, Statement *> {
   CompoundStatement(SMRange range, size_t size)
-      : Statement(range, ASTKind::CompoundStatement), size(size) {}
+      : ASTBase(range, ASTKind::CompoundStatement), size(size) {}
 
 public:
   static CompoundStatement *create(SMRange range, ASTContext *context,
@@ -146,9 +188,10 @@ private:
 };
 
 /// ExpressionStatement ::= Expression ';'
-class ExpressionStatement final : public Statement {
+class ExpressionStatement final
+    : public ASTBase<ExpressionStatement, Statement> {
   ExpressionStatement(SMRange range, Expression *expr)
-      : Statement(range, ASTKind::ExpressionStatement), expr(expr) {}
+      : ASTBase(range, ASTKind::ExpressionStatement), expr(expr) {}
 
 public:
   static ExpressionStatement *create(SMRange range, ASTContext *context,
@@ -162,10 +205,11 @@ private:
 
 /// IfStatement ::=
 ///   'if' Expression '{' Statement* '}' ('else' '{' Statement* '}')?
-class IfStatement final : public Statement,
+class IfStatement final : public ASTBase<IfStatement, Statement>,
                           public TrailingObjects<IfStatement, Statement *> {
-  IfStatement(SMRange range, size_t thenSize, optional<size_t> elseSize)
-      : Statement(range, ASTKind::IfStatement), thenSize(thenSize),
+  IfStatement(SMRange range, Expression *cond, size_t thenSize,
+              optional<size_t> elseSize)
+      : ASTBase(range, ASTKind::IfStatement), cond(cond), thenSize(thenSize),
         elseSize(elseSize) {}
 
 public:
@@ -174,6 +218,7 @@ public:
          ArrayRef<Statement *> thenStmt,
          optional<ArrayRef<Statement *>> elseStmt = nullopt);
 
+  Expression *getCond() const { return cond; }
   size_t getThenSize() const { return thenSize; }
   ArrayRef<Statement *> getThenStmts() const {
     return {getTrailingObjects<Statement *>(), thenSize};
@@ -187,18 +232,19 @@ public:
   bool hasElse() const { return elseSize.has_value(); }
 
 private:
+  Expression *cond;
   size_t thenSize;
   optional<size_t> elseSize;
 };
 
 /// WhileStatement ::= 'while' '(' Expression ')' '{' Statement* '}'
 class WhileStatement final
-    : public Statement,
+    : public ASTBase<WhileStatement, Statement>,
       public TrailingObjects<WhileStatement, Statement *> {
   WhileStatement(SMRange range, Expression *cond, size_t bodySize,
                  bool isDoWhile)
-      : Statement(range, ASTKind::WhileStatement), cond(cond),
-        bodySize(bodySize), doWhile(isDoWhile) {}
+      : ASTBase(range, ASTKind::WhileStatement), cond(cond), bodySize(bodySize),
+        doWhile(isDoWhile) {}
 
 public:
   static WhileStatement *create(SMRange range, ASTContext *context,
@@ -212,6 +258,7 @@ public:
   }
   auto begin() const { return getBody().begin(); }
   auto end() const { return getBody().end(); }
+  bool isDoWhile() const { return doWhile; }
 
 private:
   Expression *cond;
@@ -220,19 +267,19 @@ private:
 };
 
 /// ForStatement ::=
-/// 'for' '(' Declaration? ';' Expression? ';' Assignment | CompoundStatement')'
-/// '{' Statement* '}'
+/// 'for' '(' Declaration? ';' Expression? ';' Assignment | CompoundStatement
+/// ')' '{' Statement* '}'
 /// Declaration ::= 'var' Pattern ('=' Expression)?
 /// Assignment ::= Pattern
 ///   (
 ///     '=' | '+=' | '-=' | '*=' | '/=' | '%='
 ///     | '<<=' | '>>=' | '&=' | '|=' | '^='
 ///   ) Expression
-class ForStatement final : public Statement,
+class ForStatement final : public ASTBase<ForStatement, Statement>,
                            public TrailingObjects<ForStatement, Statement *> {
   ForStatement(SMRange range, bool hasDecl, optional<Expression *> cond,
                bool hasStep, size_t bodySize)
-      : Statement(range, ASTKind::ForStatement), hasDecl(hasDecl), cond(cond),
+      : ASTBase(range, ASTKind::ForStatement), hasDecl(hasDecl), cond(cond),
         hasStep(hasStep), bodySize(bodySize) {}
 
 public:
@@ -256,29 +303,29 @@ private:
 };
 
 /// BreakStatement ::= 'break' ';'
-class BreakStatement final : public Statement {
+class BreakStatement final : public ASTBase<BreakStatement, Statement> {
   friend class ASTContext;
-  BreakStatement(SMRange range) : Statement(range, ASTKind::BreakStatement) {}
+  BreakStatement(SMRange range) : ASTBase(range, ASTKind::BreakStatement) {}
 
 public:
   static BreakStatement *create(SMRange range, ASTContext *context);
 };
 
 /// ContinueStatement ::= 'continue' ';'
-class ContinueStatement final : public Statement {
+class ContinueStatement final : public ASTBase<ContinueStatement, Statement> {
   friend class ASTContext;
   ContinueStatement(SMRange range)
-      : Statement(range, ASTKind::ContinueStatement) {}
+      : ASTBase(range, ASTKind::ContinueStatement) {}
 
 public:
   static ContinueStatement *create(SMRange range, ASTContext *context);
 };
 
 /// ReturnStatement ::= 'return' Expression? ';'
-class ReturnStatement final : public Statement {
+class ReturnStatement final : public ASTBase<ReturnStatement, Statement> {
   friend class ASTContext;
   ReturnStatement(SMRange range, optional<Expression *> expr)
-      : Statement(range, ASTKind::ReturnStatement), expr(expr) {}
+      : ASTBase(range, ASTKind::ReturnStatement), expr(expr) {}
 
 public:
   static ReturnStatement *create(SMRange range, ASTContext *context,
@@ -291,11 +338,12 @@ private:
 };
 
 /// DeclarationStatement ::= 'var' Pattern ('=' Expression)? ';'
-class DeclarationStatement final : public Statement {
+class DeclarationStatement final
+    : public ASTBase<DeclarationStatement, Statement> {
   friend class ASTContext;
   DeclarationStatement(SMRange range, Pattern *pattern,
                        optional<Expression *> init)
-      : Statement(range, ASTKind::DeclarationStatement), pattern(pattern),
+      : ASTBase(range, ASTKind::DeclarationStatement), pattern(pattern),
         init(init) {}
 
 public:
@@ -312,10 +360,11 @@ private:
 };
 
 /// AssignmentStatement ::= Pattern '=' Expression ';'
-class AssignmentStatement final : public Statement {
+class AssignmentStatement final
+    : public ASTBase<AssignmentStatement, Statement> {
   friend class ASTContext;
   AssignmentStatement(SMRange range, Pattern *pattern, Expression *expr)
-      : Statement(range, ASTKind::AssignmentStatement), pattern(pattern),
+      : ASTBase(range, ASTKind::AssignmentStatement), pattern(pattern),
         expr(expr) {}
 
 public:
@@ -335,12 +384,13 @@ private:
 ///         '+=' | '-=' | '*=' | '/=' | '%='
 ///         | '<<=' | '>>=' | '&=' | '|=' | '^='
 ///       ) Expression ';'
-class OperatorAssignmentStatement final : public Statement {
+class OperatorAssignmentStatement final
+    : public ASTBase<OperatorAssignmentStatement, Statement> {
   friend class ASTContext;
   OperatorAssignmentStatement(SMRange range, Expression *lhs, Operator op,
                               Expression *rhs)
-      : Statement(range, ASTKind::OperatorAssignmentStatement), lhs(lhs),
-        op(op), rhs(rhs) {}
+      : ASTBase(range, ASTKind::OperatorAssignmentStatement), lhs(lhs), op(op),
+        rhs(rhs) {}
 
 public:
   static OperatorAssignmentStatement *create(SMRange range, ASTContext *context,
@@ -362,12 +412,12 @@ private:
 /// ParameterList ::= Parameter (',' Parameter)*
 /// Parameter ::= Pattern
 class FunctionDeclaration final
-    : public Statement,
+    : public ASTBase<FunctionDeclaration, Statement>,
       public TrailingObjects<FunctionDeclaration, Pattern *, Statement *> {
   friend class TrailingObjects;
   FunctionDeclaration(SMRange range, StringRef name, size_t paramSize,
                       size_t bodySize)
-      : Statement(range, ASTKind::FunctionDeclaration), name(name),
+      : ASTBase(range, ASTKind::FunctionDeclaration), name(name),
         paramSize(paramSize), bodySize(bodySize) {}
 
   size_t numTrailingObjects(OverloadToken<Pattern *>) const {
@@ -396,13 +446,13 @@ private:
 };
 
 /// MatchExpression ::= 'match' '(' Expression ')' '{' MatchCase* '}'
-/// MatchCase ::= 'case' Pattern ':' Statement*
+/// MatchCase ::= 'case' Pattern ':' Statement
 class MatchExpression final
-    : public Expression,
+    : public ASTBase<MatchExpression, Expression>,
       public TrailingObjects<MatchExpression,
                              std::pair<Pattern *, Statement *>> {
   MatchExpression(SMRange range, Expression *expr, size_t matchCaseSize)
-      : Expression(range, ASTKind::MatchExpression), expr(expr),
+      : ASTBase(range, ASTKind::MatchExpression), expr(expr),
         matchCaseSize(matchCaseSize) {}
 
 public:
@@ -426,11 +476,10 @@ private:
 /// BinaryExpression ::= Expression BinaryOperator Expression
 /// BinaryOperator ::= '+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '<='
 /// | '>' | '>=' | '&&' | '||' | '&' | '|' | '^' | '<<' | '>>'
-class BinaryExpression final : public Expression {
+class BinaryExpression final : public ASTBase<BinaryExpression, Expression> {
   friend class ASTContext;
   BinaryExpression(SMRange range, Expression *lhs, Operator op, Expression *rhs)
-      : Expression(range, ASTKind::BinaryExpression), lhs(lhs), op(op),
-        rhs(rhs) {}
+      : ASTBase(range, ASTKind::BinaryExpression), lhs(lhs), op(op), rhs(rhs) {}
 
 public:
   static BinaryExpression *create(SMRange range, ASTContext *context,
@@ -449,10 +498,10 @@ private:
 
 /// UnaryExpression ::= UnaryOperator Expression
 /// UnaryOperator ::= '+' | '-' | '!' | '~'
-class UnaryExpression final : public Expression {
+class UnaryExpression final : public ASTBase<UnaryExpression, Expression> {
   friend class ASTContext;
   UnaryExpression(SMRange range, Operator op, Expression *expr)
-      : Expression(range, ASTKind::UnaryExpression), op(op), expr(expr) {}
+      : ASTBase(range, ASTKind::UnaryExpression), op(op), expr(expr) {}
 
 public:
   static UnaryExpression *create(SMRange range, ASTContext *context,
@@ -469,10 +518,10 @@ private:
 /// CallExpression ::= Expression '(' ArgumentList? ')'
 /// ArgumentList ::= Expression (',' Expression)*
 class CallExpression final
-    : public Expression,
+    : public ASTBase<CallExpression, Expression>,
       public TrailingObjects<CallExpression, Expression *> {
   CallExpression(SMRange range, size_t argSize)
-      : Expression(range, ASTKind::CallExpression), argSize(argSize) {}
+      : ASTBase(range, ASTKind::CallExpression), argSize(argSize) {}
 
 public:
   static CallExpression *create(SMRange range, ASTContext *context,
@@ -491,10 +540,10 @@ private:
 
 /// ArrayExpression ::= '[' ((Expression (',' Expression)*)? ','? )?']'
 class ArrayExpression final
-    : public Expression,
+    : public ASTBase<ArrayExpression, Expression>,
       public TrailingObjects<ArrayExpression, Expression *> {
   ArrayExpression(SMRange range, size_t size)
-      : Expression(range, ASTKind::ArrayExpression), size(size) {}
+      : ASTBase(range, ASTKind::ArrayExpression), size(size) {}
 
 public:
   static ArrayExpression *create(SMRange range, ASTContext *context,
@@ -512,10 +561,10 @@ private:
 };
 
 /// IndexExpression ::= Expression '[' Expression ']'
-class IndexExpression final : public Expression {
+class IndexExpression final : public ASTBase<IndexExpression, Expression> {
   friend class ASTContext;
   IndexExpression(SMRange range, Expression *lhs, Expression *rhs)
-      : Expression(range, ASTKind::IndexExpression), lhs(lhs), rhs(rhs) {}
+      : ASTBase(range, ASTKind::IndexExpression), lhs(lhs), rhs(rhs) {}
 
 public:
   static IndexExpression *create(SMRange range, ASTContext *context,
@@ -530,10 +579,11 @@ private:
 };
 
 /// IdentifierExpression ::= Identifier
-class IdentifierExpression final : public Expression {
+class IdentifierExpression final
+    : public ASTBase<IdentifierExpression, Expression> {
   friend class ASTContext;
   IdentifierExpression(SMRange range, StringRef name)
-      : Expression(range, ASTKind::IdentifierPattern), name(name) {}
+      : ASTBase(range, ASTKind::IdentifierPattern), name(name) {}
 
 public:
   static IdentifierExpression *create(SMRange range, ASTContext *context,
@@ -547,10 +597,10 @@ private:
 
 /// TupleExpression ::= '(' Expression (',' Expression)* ','? ')'
 class TupleExpression final
-    : public Expression,
+    : public ASTBase<TupleExpression, Expression>,
       public TrailingObjects<TupleExpression, Expression *> {
   TupleExpression(SMRange range, size_t size)
-      : Expression(range, ASTKind::TupleExpression), size(size) {}
+      : ASTBase(range, ASTKind::TupleExpression), size(size) {}
 
 public:
   static TupleExpression *create(SMRange range, ASTContext *context,
@@ -566,10 +616,10 @@ private:
 };
 
 /// GroupExpression ::= '(' Expression ')'
-class GroupExpression final : public Expression {
+class GroupExpression final : public ASTBase<GroupExpression, Expression> {
   friend class ASTContext;
   GroupExpression(SMRange range, Expression *expr)
-      : Expression(range, ASTKind::GroupExpression), expr(expr) {}
+      : ASTBase(range, ASTKind::GroupExpression), expr(expr) {}
 
 public:
   static GroupExpression *create(SMRange range, ASTContext *context,
@@ -582,10 +632,10 @@ private:
 };
 
 /// IntegerLiteral
-class IntegerLiteral final : public Expression {
+class IntegerLiteral final : public ASTBase<IntegerLiteral, Expression> {
   friend class ASTContext;
   IntegerLiteral(SMRange range, uint64_t value)
-      : Expression(range, ASTKind::IntegerLiteral), value(value) {}
+      : ASTBase(range, ASTKind::IntegerLiteral), value(value) {}
 
 public:
   static IntegerLiteral *create(SMRange range, ASTContext *context,
@@ -598,10 +648,10 @@ private:
 };
 
 /// BooleanLiteral ::= 'true' | 'false'
-class BooleanLiteral final : public Expression {
+class BooleanLiteral final : public ASTBase<BooleanLiteral, Expression> {
   friend class ASTContext;
   BooleanLiteral(SMRange range, bool value)
-      : Expression(range, ASTKind::BooleanLiteral), value(value) {}
+      : ASTBase(range, ASTKind::BooleanLiteral), value(value) {}
 
 public:
   static BooleanLiteral *create(SMRange range, ASTContext *context, bool value);
@@ -613,10 +663,10 @@ private:
 };
 
 /// FloatLiteral
-class FloatLiteral final : public Expression {
+class FloatLiteral final : public ASTBase<FloatLiteral, Expression> {
   friend class ASTContext;
   FloatLiteral(SMRange range, StringRef value)
-      : Expression(range, ASTKind::FloatLiteral), value(value) {}
+      : ASTBase(range, ASTKind::FloatLiteral), value(value) {}
 
 public:
   static FloatLiteral *create(SMRange range, ASTContext *context,
@@ -629,10 +679,10 @@ private:
 };
 
 /// StringLiteral
-class StringLiteral final : public Expression {
+class StringLiteral final : public ASTBase<StringLiteral, Expression> {
   friend class ASTContext;
   StringLiteral(SMRange range, StringRef value)
-      : Expression(range, ASTKind::StringLiteral), value(value) {}
+      : ASTBase(range, ASTKind::StringLiteral), value(value) {}
 
 public:
   static StringLiteral *create(SMRange range, ASTContext *context,
@@ -645,19 +695,19 @@ private:
 };
 
 /// NilLiteral ::= 'nil'
-class NilLiteral final : public Expression {
+class NilLiteral final : public ASTBase<NilLiteral, Expression> {
   friend class ASTContext;
-  NilLiteral(SMRange range) : Expression(range, ASTKind::NilLiteral) {}
+  NilLiteral(SMRange range) : ASTBase(range, ASTKind::NilLiteral) {}
 
 public:
   static NilLiteral *create(SMRange range, ASTContext *context);
 };
 
 /// IdentifierPattern ::= Identifier
-class IdentifierPattern final : public Pattern {
+class IdentifierPattern final : public ASTBase<IdentifierPattern, Pattern> {
   friend class ASTContext;
   IdentifierPattern(SMRange range, StringRef name)
-      : Pattern(range, ASTKind::IdentifierPattern), name(name) {}
+      : ASTBase(range, ASTKind::IdentifierPattern), name(name) {}
 
 public:
   static IdentifierPattern *create(SMRange range, ASTContext *context,
@@ -670,10 +720,10 @@ private:
 };
 
 /// TuplePattern ::= '(' Pattern (',' Pattern)* ','? ')'
-class TuplePattern final : public Pattern,
+class TuplePattern final : public ASTBase<TuplePattern, Pattern>,
                            public TrailingObjects<TuplePattern, Pattern *> {
   TuplePattern(SMRange range, size_t size)
-      : Pattern(range, ASTKind::TuplePattern), size(size) {}
+      : ASTBase(range, ASTKind::TuplePattern), size(size) {}
 
 public:
   static TuplePattern *create(SMRange range, ASTContext *context,

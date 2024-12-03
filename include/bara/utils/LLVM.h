@@ -20,6 +20,8 @@ using llvm::SmallVector;
 
 using llvm::errs;
 using llvm::outs;
+using llvm::raw_ostream;
+using llvm::raw_string_ostream;
 using llvm::SMLoc;
 using llvm::SMRange;
 using llvm::StringRef;
