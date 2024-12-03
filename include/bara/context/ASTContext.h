@@ -9,7 +9,7 @@ namespace bara {
 
 class ASTContext {
 public:
-  ASTContext();
+  ASTContext() = default;
 
   ~ASTContext() {
     for (auto ptr : allocations) {
@@ -27,16 +27,7 @@ public:
     return new (alloc(sizeof(T))) T(std::forward<Ts>(args)...);
   }
 
-  BreakStatement *getBreakStmt() const { return breakStmt; }
-  ContinueStatement *getContinueStmt() const { return continueStmt; }
-  BooleanLiteral *getTrueStmt() const { return trueStmt; }
-  BooleanLiteral *getFalseStmt() const { return falseStmt; }
-
 private:
-  BreakStatement *breakStmt;
-  ContinueStatement *continueStmt;
-  BooleanLiteral *trueStmt;
-  BooleanLiteral *falseStmt;
   std::vector<void *> allocations;
 };
 } // namespace bara

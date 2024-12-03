@@ -6,6 +6,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/TrailingObjects.h"
 #include "llvm/Support/raw_ostream.h"
@@ -23,6 +24,10 @@ using llvm::SMLoc;
 using llvm::SMRange;
 using llvm::StringRef;
 using llvm::TrailingObjects;
+
+using llvm::cast;
+using llvm::dyn_cast;
+using llvm::isa;
 
 } // namespace bara
 
