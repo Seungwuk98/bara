@@ -1,0 +1,71 @@
+#ifndef TOKEN
+#define TOKEN(NAME)
+#endif
+
+#ifndef KEYWORD
+#define KEYWORD(NAME) TOKEN(NAME)
+#endif
+
+TOKEN(Unknown)
+TOKEN(Plus)           // +
+TOKEN(Minus)          // -
+TOKEN(Star)           // *
+TOKEN(Slash)          // /
+TOKEN(Percent)        // %
+TOKEN(Equal)          // =
+TOKEN(Bang)           // !
+TOKEN(Tilde)          // ~
+TOKEN(Ampersand)      // &
+TOKEN(Caret)          // ^
+TOKEN(Comma)          // ,
+TOKEN(Semicolon)      // ;
+TOKEN(LBrace)         // {
+TOKEN(RBrace)         // }
+TOKEN(LParen)         // (
+TOKEN(RParen)         // )
+TOKEN(LBracket)       // [
+TOKEN(RBracket)       // ]
+TOKEN(EqualEqual)     // ==
+TOKEN(NotEqual)       // !=
+TOKEN(Lt)             // <
+TOKEN(Le)             // <=
+TOKEN(Gt)             // >
+TOKEN(Ge)             // >=
+TOKEN(LogicalAnd)     // &&
+TOKEN(LogicalOr)      // ||
+TOKEN(VBar)           // |
+TOKEN(LShift)         // <<
+TOKEN(RShift)         // >>
+TOKEN(PlusEqual)      // +=
+TOKEN(MinusEqual)     // -=
+TOKEN(StarEqual)      // *=
+TOKEN(SlashEqual)     // /=
+TOKEN(PercentEqual)   // %=
+TOKEN(LShiftEqual)    // <<=
+TOKEN(RShiftEqual)    // >>=
+TOKEN(AmpersandEqual) // &=
+TOKEN(VBarEqual)      // |=
+TOKEN(CaretEqual)     // ^=
+
+TOKEN(Identifier)
+TOKEN(IntegerLiteral)
+TOKEN(FloatLiteral)
+TOKEN(StringLiteral)
+
+KEYWORD(if)
+KEYWORD(else)
+KEYWORD(while)
+KEYWORD(for)
+KEYWORD(break)
+KEYWORD(continue)
+KEYWORD(return)
+KEYWORD(var)
+KEYWORD(do)
+KEYWORD(true)
+KEYWORD(false)
+KEYWORD(nil)
+
+TOKEN(Eof)
+
+#undef TOKEN
+#undef KEYWORD

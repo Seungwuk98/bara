@@ -125,4 +125,25 @@ TEST(ASTPrintTests, BinaryExpression) {
   EXPECT_STREQ(binary9->toString().c_str(), "foo >> bar && baz");
 }
 
+TEST(ASTPrintTests, UnaryExpression) {
+  ASTContext context;
+  auto *unary1 = UnaryExpression::create(
+      {}, &context, Operator::Minus,
+      IdentifierExpression::create({}, &context, "foo"));
+
+  EXPECT_STREQ(unary1->toString().c_str(), "-foo");
+
+  auto *unary2 = UnaryExpression::create(
+      {}, &context, Operator::Not,
+      IdentifierExpression::create({}, &context, "foo"));
+
+  EXPECT_STREQ(unary2->toString().c_str(), "!foo");
+
+  auto *unary3 = UnaryExpression::create(
+      {}, &context, Operator::BitNot,
+      IdentifierExpression::create({}, &context, "foo"));
+
+  EXPECT_STREQ(unary3->toString().c_str(), "~foo");
+}
+
 } // namespace bara

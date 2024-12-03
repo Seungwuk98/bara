@@ -11,19 +11,11 @@ class ASTContext {
 public:
   ASTContext() = default;
 
-  ~ASTContext() {
-    for (auto ptr : allocations) {
-      free(ptr);
-    }
-  }
+  ~ASTContext();
 
-  void *alloc(std::size_t size) {
-    void *ptr = malloc(size);
-    allocations.push_back(ptr);
-    return ptr;
-  }
-
-  template <typename T, typename... Ts> T *make(Ts &&...args) {
+  void *alloc(std::size_t size);
+  template <typename T, typename... Ts>
+  T *make(Ts &&...args) {
     return new (alloc(sizeof(T))) T(std::forward<Ts>(args)...);
   }
 

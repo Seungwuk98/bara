@@ -63,6 +63,9 @@ static void printOperator(raw_ostream &os, Operator op) {
   case Operator::Or:
     os << "||";
     break;
+  case Operator::Not:
+    os << "!";
+    break;
   case Operator::BitAnd:
     os << "&";
     break;

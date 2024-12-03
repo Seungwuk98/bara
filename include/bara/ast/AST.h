@@ -136,6 +136,7 @@ enum class Operator {
   Ge,     // >=
   And,    // &&
   Or,     // ||
+  Not,    // !
   BitAnd, // &
   BitOr,  // |
   BitXor, // ^
