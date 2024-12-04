@@ -17,16 +17,13 @@ public:
     NUM_OF_TOKEN
   };
 
-private:
   Token(SMRange range, Kind kind, StringRef symbol, size_t row, size_t col,
         size_t index)
       : range(range), kind(kind), symbol(symbol), row(row), col(col),
         index(index) {}
 
   friend class Lexer;
-  void setIndex(size_t index) { this->index = index; }
 
-public:
   template <Kind... Kinds>
   bool is() const {
     return ((kind == Kinds) || ...);
@@ -44,6 +41,14 @@ public:
   size_t getRow() const { return row; }
   size_t getCol() const { return col; }
   size_t getIndex() const { return index; }
+
+  bool operator==(const Token &other) const {
+    return kind == other.kind && symbol == other.symbol && row == other.row &&
+           col == other.col && index == other.index;
+  }
+
+  static const char *getTokenString(Kind kind);
+  string toString() const;
 
 private:
   SMRange range;

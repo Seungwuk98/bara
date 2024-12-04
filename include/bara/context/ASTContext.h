@@ -20,7 +20,7 @@ public:
   }
 
 private:
-  std::vector<void *> allocations;
+  std::vector<void *> allocations{};
 };
 } // namespace bara
 

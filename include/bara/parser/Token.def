@@ -64,6 +64,7 @@ KEYWORD(do)
 KEYWORD(true)
 KEYWORD(false)
 KEYWORD(nil)
+KEYWORD(fn)
 
 TOKEN(Eof)
 

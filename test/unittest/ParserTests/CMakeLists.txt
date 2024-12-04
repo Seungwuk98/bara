@@ -1,0 +1,9 @@
+add_unit_test(
+  ParserTests
+  LexerTests.cpp
+  PRIVATE
+  BaraAST
+  BaraContext
+  BaraParser
+  ${llvm_libs}
+)

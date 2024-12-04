@@ -1,6 +1,19 @@
 #include "bara/parser/Lexer.h"
+#include "llvm/ADT/StringSwitch.h"
 
 namespace bara {
+
+Token *Lexer::getNextToken(size_t index) {
+  auto tokenPos = tokPos + index;
+  auto nextTok = lexToTokenPos(tokenPos);
+  tokPos = nextTok->getIndex() + 1;
+  return nextTok;
+}
+
+Token *Lexer::peekToken(size_t index) {
+  auto tokenPos = tokPos + index;
+  return lexToTokenPos(tokenPos);
+}
 
 void Lexer::lex() {
   skipWhitespace();
@@ -43,7 +56,7 @@ void Lexer::lex() {
       skip();
       kind = Token::Tok_SlashEqual;
     } else if (ch == '/') {
-      while (peek() != '\n')
+      while (peek() != '\n' && peek() != eof)
         skip();
       lex();
     } else 
@@ -104,6 +117,7 @@ void Lexer::lex() {
         kind = Token::Tok_LShift;
     } else
       kind = Token::Tok_Lt;
+    return;
 
   case '>':
     ch = peek();
@@ -174,6 +188,50 @@ void Lexer::lex() {
   }
 }
 
+void Lexer::lexIdentifier() {
+  while (isalnum(peek()) || peek() == '_')
+    skip();
+  auto symbol = buffer.slice(lastPos, pos);
+  kind = llvm::StringSwitch<Token::Kind>(symbol)
+#define KEYWORD(NAME) .Case(#NAME, Token::Tok_##NAME)
+#include "bara/parser/Token.def"
+             .Default(Token::Tok_Identifier);
+}
+
+void Lexer::lexNumber() {
+  while (std::isdigit(peek()))
+    skip();
+  auto isFloat = false;
+  if (peek() == '.') {
+    skip();
+    isFloat = true;
+    while (std::isdigit(peek()))
+      skip();
+  }
+  kind = isFloat ? Token::Tok_FloatLiteral : Token::Tok_IntegerLiteral;
+}
+
+void Lexer::lexString() {
+  while (peek() != '"' && peek() != eof) {
+    auto ch = peek();
+    if (ch == '\\') {
+      skip();
+    } else if (ch == '\n') {
+      report(createRange(), LexDiagnostic::error_unexpected_newline);
+      kind = Token::Tok_Unknown;
+      return;
+    }
+    skip();
+  }
+  skip();
+  if (peek() == eof) {
+    report(createRange(), LexDiagnostic::error_unclosed_string);
+    kind = Token::Tok_Unknown;
+    return;
+  }
+  kind = Token::Tok_StringLiteral;
+}
+
 void Lexer::capture() {
   lastPos = pos;
   lastRow = row;
@@ -188,7 +246,7 @@ char Lexer::advance() {
   auto ch = buffer[pos++];
   if (ch == '\n') {
     row++;
-    col = 0;
+    col = 1;
   } else {
     col++;
   }
@@ -203,13 +261,14 @@ char Lexer::peek() {
 
 void Lexer::skip() { advance(); }
 
-void Lexer::lexToTokenPos(size_t pos) {
+Token *Lexer::lexToTokenPos(size_t pos) {
   while (pos >= tokens.size()) {
     if (!tokens.empty() && tokens.back()->is<Token::Tok_Eof>())
-      return;
+      return tokens.back();
     lex();
     createToken();
   }
+  return tokens[pos];
 }
 
 void Lexer::skipWhitespace() {
@@ -217,15 +276,37 @@ void Lexer::skipWhitespace() {
     skip();
 }
 
-Token *Lexer::createToken() {
+SMRange Lexer::createRange() const {
   auto start = SMLoc::getFromPointer(buffer.data() + lastPos);
   auto end = SMLoc::getFromPointer(buffer.data() + pos);
-  auto range = SMRange(start, end);
+  return SMRange(start, end);
+}
+
+Token *Lexer::createToken() {
   auto symbol = buffer.slice(lastPos, pos);
+  auto range = createRange();
   auto token = Token::create(context, range, kind, symbol, lastRow, lastCol,
                              tokens.size());
   tokens.emplace_back(token);
   return token;
+}
+
+const char *lexDiagMsg[] = {
+#define DIAG(Name, Msg, Error) Msg,
+#include "bara/parser/LexerDiagnostic.def"
+};
+
+llvm::SourceMgr::DiagKind lexDiagKind[] = {
+#define DIAG(Name, Msg, Error) llvm::SourceMgr::DiagKind::DK_##Error,
+#include "bara/parser/LexerDiagnostic.def"
+};
+
+const char *Lexer::LexDiagnostic::getDiagMsg(Diag kind) {
+  return lexDiagMsg[kind];
+}
+
+llvm::SourceMgr::DiagKind Lexer::LexDiagnostic::getDiagKind(Diag kind) {
+  return lexDiagKind[kind];
 }
 
 } // namespace bara

@@ -9,9 +9,9 @@ ASTContext::~ASTContext() {
   }
 }
 
-void *ASTContext::alloc(std::size_t size) {
+void *ASTContext::alloc(size_t size) {
   void *ptr = malloc(size);
-  allocations.push_back(ptr);
+  allocations.emplace_back(ptr);
   return ptr;
 }
 

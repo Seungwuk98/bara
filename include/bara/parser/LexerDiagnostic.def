@@ -1,0 +1,8 @@
+#ifndef DIAG
+#define DIAG(Name, Msg, Error)
+#endif
+
+DIAG(error_unclosed_string, "Unclosed string", Error)
+DIAG(error_unexpected_newline, "Unexpected new line", Error)
+
+#undef DIAG
