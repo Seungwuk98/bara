@@ -238,7 +238,7 @@ private:
   optional<size_t> elseSize;
 };
 
-/// WhileStatement ::= 'while' '(' Expression ')' '{' Statement* '}'
+/// WhileStatement ::= 'while' Expression '{' Statement* '}'
 class WhileStatement final
     : public ASTBase<WhileStatement, Statement>,
       public TrailingObjects<WhileStatement, Statement *> {
@@ -409,7 +409,7 @@ private:
 };
 
 /// FunctionDeclaration ::=
-/// 'fn' Identifier '(' ParameterList? ')' '{' Statement* '}'
+///   'fn' Identifier '(' ParameterList? ')' '{' Statement* '}'
 /// ParameterList ::= Parameter (',' Parameter)*
 /// Parameter ::= Pattern
 class FunctionDeclaration final
@@ -447,20 +447,19 @@ private:
 };
 
 /// MatchExpression ::= 'match' '(' Expression ')' '{' MatchCase* '}'
-/// MatchCase ::= 'case' Pattern ':' Statement
+/// MatchCase ::= '\' Pattern '=>' Expression ';'
 class MatchExpression final
     : public ASTBase<MatchExpression, Expression>,
       public TrailingObjects<MatchExpression,
-                             std::pair<Pattern *, Statement *>> {
+                             std::pair<Pattern *, Expression *>> {
   MatchExpression(SMRange range, Expression *expr, size_t matchCaseSize)
       : ASTBase(range, ASTKind::MatchExpression), expr(expr),
         matchCaseSize(matchCaseSize) {}
 
 public:
-  using MatchCase = std::pair<Pattern *, Statement *>;
-  static MatchExpression *
-  create(SMRange range, ASTContext *context, Expression *expr,
-         ArrayRef<std::pair<Pattern *, Statement *>> cases);
+  using MatchCase = std::pair<Pattern *, Expression *>;
+  static MatchExpression *create(SMRange range, ASTContext *context,
+                                 Expression *expr, ArrayRef<MatchCase> cases);
 
   Expression *getExpr() const { return expr; }
   size_t getMatchCaseSize() const { return matchCaseSize; }
@@ -472,6 +471,46 @@ public:
 private:
   Expression *expr;
   size_t matchCaseSize;
+};
+
+/// LambdaExpression ::=
+///   '\' ParamList? '=>' (Expression | '{' Statement* '}')
+class LambdaExpression final
+    : public ASTBase<LambdaExpression, Expression>,
+      public TrailingObjects<LambdaExpression, Pattern *, AST *> {
+  friend class ASTContext;
+  friend class TrailingObjects;
+
+  LambdaExpression(SMRange range, size_t paramSize, bool isExpr,
+                   size_t bodySize)
+      : ASTBase(range, ASTKind::LambdaExpression), paramSize(paramSize),
+        isExpr(isExpr), bodySize(bodySize) {}
+
+  size_t numTrailingObjects(OverloadToken<Pattern *>) const {
+    return paramSize;
+  }
+
+public:
+  static LambdaExpression *create(SMRange range, ASTContext *context,
+                                  ArrayRef<Pattern *> params, Expression *expr);
+
+  static LambdaExpression *create(SMRange range, ASTContext *context,
+                                  ArrayRef<Pattern *> params,
+                                  ArrayRef<Statement *> body);
+
+  size_t getParamSize() const { return paramSize; }
+  bool isExprBody() const { return isExpr; }
+  Expression *getExpr() const;
+  ArrayRef<Pattern *> getParams() const {
+    return {getTrailingObjects<Pattern *>(), paramSize};
+  }
+  ArrayRef<Statement *> getStmtBody() const;
+  size_t getBodySize() const { return bodySize; }
+
+private:
+  size_t paramSize;
+  bool isExpr;
+  size_t bodySize;
 };
 
 /// BinaryExpression ::= Expression BinaryOperator Expression
@@ -596,7 +635,9 @@ private:
   string name;
 };
 
-/// TupleExpression ::= '(' Expression (',' Expression)* ','? ')'
+/// TupleExpression ::=
+///   '(' Expression? ',' ')'
+///   | '(' Expression (',' Expression)+ ','? ')'
 class TupleExpression final
     : public ASTBase<TupleExpression, Expression>,
       public TrailingObjects<TupleExpression, Expression *> {

@@ -1,0 +1,7 @@
+#ifndef DIAG
+#define DIAG(Name, Msg, Error)
+#endif // DIAG
+
+DIAG(error_unexpected_token, "Unexpected token. expect: ({}), got: ({})", Error)
+
+#undef DIAG

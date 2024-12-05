@@ -13,6 +13,9 @@ public:
   Lexer(Diagnostic &reporter, ASTContext *context, StringRef buffer)
       : buffer(buffer), reporter(reporter), context(context) {}
 
+  Diagnostic &getDiagnostic() { return reporter; }
+  ASTContext *getASTContext() { return context; }
+
   Token *getNextToken(size_t index = 0);
   Token *peekToken(size_t index = 0);
   ArrayRef<Token *> getTokens() const { return tokens; }

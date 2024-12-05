@@ -77,7 +77,10 @@ void Lexer::lex() {
     if (ch == '=') {
       skip();
       kind = Token::Tok_EqualEqual;
-    } else
+    } else if (ch == '>') {
+      skip();
+      kind = Token::Tok_RightArrow;
+    } else 
       kind = Token::Tok_Equal;
     return;
 
@@ -168,6 +171,8 @@ void Lexer::lex() {
     kind = Token::Tok_Bang;       return;
   case '~':
     kind = Token::Tok_Tilde;      return;
+  case '\\':
+    kind = Token::Tok_BackSlash;  return;
 
   case '"':
     lexString();                  return;

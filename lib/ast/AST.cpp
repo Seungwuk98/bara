@@ -342,13 +342,13 @@ void ASTPrintVisitor::visit(const WhileStatement &ast) {
         stmt->accept(*this);
       }
     }
-    printer.ln() << "} while (";
+    printer.ln() << "} while ";
     ast.getCond()->accept(*this);
-    printer << ");";
+    printer << ";";
   } else {
-    printer << "while (";
+    printer << "while ";
     ast.getCond()->accept(*this);
-    printer << ") {";
+    printer << "{";
     {
       ASTPrinter::AddIndentScope scope(printer);
       for (auto stmt : ast.getBody()) {
@@ -739,9 +739,9 @@ void ASTEqualVisitor::visit(const FunctionDeclaration &other) {
 /// MatchExpression
 //===----------------------------------------------------------------------===//
 
-MatchExpression *
-MatchExpression::create(SMRange range, ASTContext *context, Expression *expr,
-                        ArrayRef<std::pair<Pattern *, Statement *>> cases) {
+MatchExpression *MatchExpression::create(SMRange range, ASTContext *context,
+                                         Expression *expr,
+                                         ArrayRef<MatchCase> cases) {
   auto allocSize = totalSizeToAlloc<MatchCase>(cases.size());
   void *mem = context->alloc(allocSize);
   auto *matchExpr = new (mem) MatchExpression(range, expr, cases.size());
@@ -790,6 +790,101 @@ void ASTEqualVisitor::visit(const MatchExpression &other) {
       equal = false;
       return;
     }
+  }
+}
+
+//===----------------------------------------------------------------------===//
+/// LambdaExpression
+//===----------------------------------------------------------------------===//
+
+LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
+                                           ArrayRef<Pattern *> params,
+                                           ArrayRef<Statement *> body) {
+  auto allocSize =
+      totalSizeToAlloc<Pattern *, AST *>(params.size(), body.size());
+  void *mem = context->alloc(allocSize);
+  auto *lambdaExpr =
+      new (mem) LambdaExpression(range, params.size(), false, body.size());
+  std::uninitialized_copy(params.begin(), params.end(),
+                          lambdaExpr->getTrailingObjects<Pattern *>());
+  std::uninitialized_copy(
+      body.begin(), body.end(),
+      reinterpret_cast<Statement **>(lambdaExpr->getTrailingObjects<AST *>()));
+  return lambdaExpr;
+}
+
+LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
+                                           ArrayRef<Pattern *> params,
+                                           Expression *expr) {
+  auto allocSize = totalSizeToAlloc<Pattern *, AST *>(params.size(), 1);
+  void *mem = context->alloc(allocSize);
+  auto *lambdaExpr = new (mem) LambdaExpression(range, params.size(), true, 1);
+  std::uninitialized_copy(params.begin(), params.end(),
+                          lambdaExpr->getTrailingObjects<Pattern *>());
+  *(reinterpret_cast<Expression **>(lambdaExpr->getTrailingObjects<AST *>())) =
+      expr;
+  return lambdaExpr;
+}
+
+Expression *LambdaExpression::getExpr() const {
+  assert(isExprBody());
+  return *reinterpret_cast<Expression *const *>(getTrailingObjects<AST *>());
+}
+
+ArrayRef<Statement *> LambdaExpression::getStmtBody() const {
+  assert(!isExprBody());
+  return {reinterpret_cast<Statement *const *>(getTrailingObjects<AST *>()),
+          getBodySize()};
+}
+
+void ASTPrintVisitor::visit(const LambdaExpression &ast) {
+  printer << "\\";
+  for (auto [idx, param] : llvm::enumerate(ast.getParams())) {
+    param->accept(*this);
+    if (idx != ast.getParams().size() - 1)
+      printer << ", ";
+  }
+  printer << " => ";
+  if (ast.isExprBody()) {
+    ast.getExpr()->accept(*this);
+  } else {
+    printer << "{";
+    {
+      ASTPrinter::AddIndentScope scope(printer);
+      for (auto stmt : ast.getStmtBody()) {
+        printer.ln();
+        stmt->accept(*this);
+      }
+    }
+    printer.ln() << "}";
+  }
+}
+
+void ASTEqualVisitor::visit(const LambdaExpression &other) {
+  if (!thisAST->isa<LambdaExpression>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisExpr = thisAST->cast<LambdaExpression>();
+  if (!isEqualASTArray<Pattern *>(thisExpr->getParams(), other.getParams())) {
+    equal = false;
+    return;
+  }
+
+  if (thisExpr->isExprBody() != other.isExprBody()) {
+    equal = false;
+    return;
+  }
+
+  if (thisExpr->isExprBody()) {
+    if (!thisExpr->getExpr()->isEqual(other.getExpr())) {
+      equal = false;
+      return;
+    }
+  } else {
+    equal = isEqualASTArray<Statement *>(thisExpr->getStmtBody(),
+                                         other.getStmtBody());
   }
 }
 

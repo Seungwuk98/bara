@@ -19,6 +19,7 @@ TOKEN(Ampersand)      // &
 TOKEN(Caret)          // ^
 TOKEN(Comma)          // ,
 TOKEN(Semicolon)      // ;
+TOKEN(BackSlash)      // '\'
 TOKEN(LBrace)         // {
 TOKEN(RBrace)         // }
 TOKEN(LParen)         // (
@@ -46,6 +47,7 @@ TOKEN(RShiftEqual)    // >>=
 TOKEN(AmpersandEqual) // &=
 TOKEN(VBarEqual)      // |=
 TOKEN(CaretEqual)     // ^=
+TOKEN(RightArrow)     // =>
 
 TOKEN(Identifier)
 TOKEN(IntegerLiteral)
