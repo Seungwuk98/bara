@@ -782,6 +782,88 @@ private:
   size_t size;
 };
 
+class GroupPattern final : public ASTBase<GroupPattern, Pattern> {
+  friend class ASTContext;
+  GroupPattern(SMRange range, Pattern *pattern)
+      : ASTBase(range, ASTKind::GroupPattern), pattern(pattern) {}
+
+public:
+  static GroupPattern *create(SMRange range, ASTContext *context,
+                              Pattern *pattern);
+
+  Pattern *getPattern() const { return pattern; }
+
+private:
+  Pattern *pattern;
+};
+
+class IntegerPattern final : public ASTBase<IntegerPattern, Pattern> {
+  friend class ASTContext;
+  IntegerPattern(SMRange range, uint64_t value)
+      : ASTBase(range, ASTKind::IntegerPattern), value(value) {}
+
+public:
+  static IntegerPattern *create(SMRange range, ASTContext *context,
+                                uint64_t value);
+
+  uint64_t getValue() const { return value; }
+
+private:
+  uint64_t value;
+};
+
+class FloatPattern final : public ASTBase<FloatPattern, Pattern> {
+  friend class ASTContext;
+  FloatPattern(SMRange range, StringRef value)
+      : ASTBase(range, ASTKind::FloatPattern), value(value) {}
+
+public:
+  static FloatPattern *create(SMRange range, ASTContext *context,
+                              StringRef value);
+
+  StringRef getValue() const { return value; }
+
+private:
+  string value;
+};
+
+class StringPattern final : public ASTBase<StringPattern, Pattern> {
+  friend class ASTContext;
+  StringPattern(SMRange range, StringRef value)
+      : ASTBase(range, ASTKind::StringPattern), value(value) {}
+
+public:
+  static StringPattern *create(SMRange range, ASTContext *context,
+                               StringRef value);
+
+  StringRef getValue() const { return value; }
+
+private:
+  string value;
+};
+
+class BooleanPattern final : public ASTBase<BooleanPattern, Pattern> {
+  friend class ASTContext;
+  BooleanPattern(SMRange range, bool value)
+      : ASTBase(range, ASTKind::BooleanPattern), value(value) {}
+
+public:
+  static BooleanPattern *create(SMRange range, ASTContext *context, bool value);
+
+  bool getValue() const { return value; }
+
+private:
+  bool value;
+};
+
+class EmptyPattern final : public ASTBase<BooleanPattern, Pattern> {
+  friend class ASTContext;
+  EmptyPattern(SMRange range) : ASTBase(range, ASTKind::EmptyPattern) {}
+
+public:
+  static EmptyPattern *create(SMRange range, ASTContext *context);
+};
+
 } // namespace bara
 
 #endif // BARA_AST_H

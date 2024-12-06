@@ -67,6 +67,7 @@ KEYWORD(true)
 KEYWORD(false)
 KEYWORD(nil)
 KEYWORD(fn)
+KEYWORD(match)
 
 TOKEN(Eof)
 

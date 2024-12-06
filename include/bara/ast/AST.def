@@ -32,5 +32,11 @@ AST_KIND(StringLiteral)
 AST_KIND(NilLiteral)
 AST_KIND(IdentifierPattern)
 AST_KIND(TuplePattern)
+AST_KIND(GroupPattern)
+AST_KIND(IntegerPattern)
+AST_KIND(StringPattern)
+AST_KIND(BooleanPattern)
+AST_KIND(FloatPattern)
+AST_KIND(EmptyPattern)
 
 #undef AST_KIND

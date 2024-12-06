@@ -3,5 +3,6 @@
 #endif // DIAG
 
 DIAG(error_unexpected_token, "Unexpected token. expect: ({}), got: ({})", Error)
+DIAG(error_unparsable_token, "Unparsable token for '{}'. got: ({})", Error)
 
 #undef DIAG

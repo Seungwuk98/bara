@@ -38,9 +38,6 @@ private:
   /// CompoundStatement ::= '{' Statement* '}'
   CompoundStatement *parseCompoundStatement();
 
-  /// ExpressionStatement ::= Expression ';'
-  ExpressionStatement *parseExpressionStatement();
-
   /// IfStatement ::=
   ///   'if' Expression '{' Statement* '}' ('else' '{' Statement '}')?
   IfStatement *parseIfStatement();
@@ -75,14 +72,15 @@ private:
   DeclarationStatement *parseDeclarationStatement();
 
   /// AssignmentStatement ::= Pattern '=' Expression ';'
-  AssignmentStatement *parseAssignmentStatement();
+  AssignmentStatement *parseAssignmentStatement(Expression *lhs);
 
   /// OperatorAssignmentStatement ::= Identifier | IndexExpression
   ///       (
   ///         '+=' | '-=' | '*=' | '/=' | '%='
   ///         | '<<=' | '>>=' | '&=' | '|=' | '^='
   ///       ) Expression ';'
-  OperatorAssignmentStatement *parseOperatorAssignmentStatement();
+  OperatorAssignmentStatement *
+  parseOperatorAssignmentStatement(Expression *rhs);
 
   /// FunctionDeclaration ::=
   ///   'fn' Identifier '(' ParameterList? ')' '{' Statement* '}'
@@ -93,7 +91,7 @@ private:
   /// Expression ::= LogicalOrExpression
   Expression *parseExpression();
 
-  /// LogicalOrExpression ::= LogicalAndExpression ('&&' LogicalAndExpression)*
+  /// LogicalOrExpression ::= LogicalAndExpression ('||' LogicalAndExpression)*
   Expression *parseLogicalOrExpression();
 
   /// LogicalAndExpression ::= BitwiseOrExpression ('&&' BitwiseOrExpression)*
@@ -109,16 +107,16 @@ private:
   Expression *parseEqualityExpression();
 
   /// Comparison ::= BitwiseShift (('<' | '<=' | '>' | '>=') BitwiseShift)*
-  Expression *parseComparison();
+  Expression *parseComparisonExpression();
 
   /// BitwiseShift ::= Addition (('<<' | '>>') Addition)*
-  Expression *parseBitwiseShift();
+  Expression *parseBitwiseShiftExpression();
 
   /// Addition ::= Multiplication (('+' | '-') Multiplication)*
-  Expression *parseAddition();
+  Expression *parseAdditionExpression();
 
   /// Multiplication ::= UnaryExpression (('*' | '/' | '%') UnaryExpression)*
-  Expression *parseMultiplication();
+  Expression *parseMultiplicationExpression();
 
   /// UnaryExpression ::=
   ///   ('+' | '-' | '!' | '~') UnaryExpression
@@ -143,7 +141,7 @@ private:
   MatchExpression *parseMatchExpression();
 
   /// MatchCase ::= '\' Pattern '=>' Expression ';'
-  std::optional<MatchExpression::MatchCase> parseMatchCase();
+  MatchExpression::MatchCase parseMatchCase();
 
   /// LambdaExpression ::= '\' ParameterList? '=>' Expression
   LambdaExpression *parseLambdaExpression();
@@ -166,10 +164,35 @@ private:
 
   FloatLiteral *parseFloatLiteral();
 
+  /// Pattern ::= IdentifierPattern | TuplePattern | IntegerPattern |
+  /// FloatPattern | StringPattern | GroupPattern | EmptyPattern
+  Pattern *parsePattern();
+
+  /// IdentifierPattern ::= Identifier
+  Pattern *parseIdentifierPattern();
+
+  /// TuplePattern ::=
+  ///   '(' Pattern? ',' ')'
+  ///   |'(' Pattern (',' Pattern)+ ','? ')'
+  /// GroupPattern ::=
+  ///   '(' Pattern ')'
+  Pattern *parseTupleOrGroupPattern();
+
+  IntegerPattern *parseIntegerPattern();
+
+  FloatPattern *parseFloatPattern();
+
+  BooleanPattern *parseBooleanPattern();
+
+  StringPattern *parseStringPattern();
+
+  vector<Statement *> parseStatements();
+
 private:
   Token *advance();
+  void skip();
   Token *peek(size_t look = 0);
-  template <Token::Kind Kind>
+  template <Token::Kind... Kind>
   bool peekIs();
 
   template <Token::Kind Kind>
@@ -180,6 +203,8 @@ private:
 
   template <Token::Kind... Point>
   void recovery();
+
+  void commonRecovery();
 
   struct ParseDiagnostic {
     enum Diag {
@@ -199,6 +224,21 @@ private:
                     .str());
   }
 
+  struct RangeCapture {
+    RangeCapture(Parser &parser)
+        : parser(parser), start(parser.peek()->getRange().Start) {}
+
+    RangeCapture(Parser &parser, SMLoc start) : parser(parser), start(start) {}
+
+    SMRange create() const {
+      return SMRange(start, parser.tok->getRange().End);
+    }
+
+  private:
+    Parser &parser;
+    SMLoc start;
+  };
+
 private:
   Lexer &lexer;
   Diagnostic &diag;
@@ -206,9 +246,9 @@ private:
   Token *tok;
 };
 
-template <Token::Kind Kind>
+template <Token::Kind... Kind>
 bool Parser::peekIs() {
-  return peek()->getKind() != Kind;
+  return tok->is<Kind...>();
 }
 
 template <Token::Kind Kind>
