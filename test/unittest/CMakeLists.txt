@@ -1,7 +1,5 @@
 function(add_unit_test test_name)
   cmake_parse_arguments(ARG "" "" "PRIVATE;PUBLIC" ${ARGN})
-  message(STATUS "ARG_UNPARSED_ARGUMENTS: ${ARG_UNPARSED_ARGUMENTS}")
-  message(STATUS "ARG_PRIVATE: ${ARG_PRIVATE}")
   add_executable(${test_name} ${ARG_UNPARSED_ARGUMENTS})
   target_link_libraries(${test_name} 
     PRIVATE 

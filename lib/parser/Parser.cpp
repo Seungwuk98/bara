@@ -4,6 +4,8 @@
 
 namespace bara {
 
+static optional<Operator> getOperator(Token::Kind kind);
+
 Program *Parser::parse() { return parseProgram(); }
 
 Program *Parser::parseProgram() {
@@ -174,8 +176,101 @@ WhileStatement *Parser::parseDoWhileStatement() {
 }
 
 ForStatement *Parser::parseForStatement() {
-  llvm_unreachable("Not implemented");
+  RangeCapture capture(*this);
+  if (consume<Token::Tok_for, Token::Tok_LParen>())
+    return nullptr;
+
+  optional<Statement *> decl;
+
+  if (!peekIs<Token::Tok_Semicolon>()) {
+    RangeCapture declCapture(*this);
+    if (consume<Token::Tok_var>())
+      return nullptr;
+
+    auto *pattern = parsePattern();
+    if (diag.hasError())
+      return nullptr;
+
+    if (consume<Token::Tok_Equal>())
+      return nullptr;
+
+    auto *expr = parseExpression();
+    if (diag.hasError())
+      return nullptr;
+
+    decl = DeclarationStatement::create(declCapture.create(), context, pattern,
+                                        expr);
+  }
+
+  if (consume<Token::Tok_Semicolon>())
+    return nullptr;
+
+  optional<Expression *> cond;
+  if (!peekIs<Token::Tok_Semicolon>()) {
+    auto *expr = parseExpression();
+    if (diag.hasError())
+      return nullptr;
+    cond = expr;
+  }
+
+  if (consume<Token::Tok_Semicolon>())
+    return nullptr;
+
+  optional<Statement *> step;
+  if (!peekIs<Token::Tok_RParen>()) {
+    if (peekIs<Token::Tok_LBrace>()) {
+      /// Compound Statement
+      step = parseCompoundStatement();
+      if (diag.hasError())
+        return nullptr;
+    } else {
+      /// Assignment
+      RangeCapture stepCapture(*this);
+
+      auto *expr = parseExpression();
+      if (diag.hasError())
+        return nullptr;
+
+      auto *nextTok = advance();
+      if (nextTok->is<Token::Tok_Equal>()) {
+        auto *rhs = parseExpression();
+        if (diag.hasError())
+          return nullptr;
+        step = AssignmentStatement::create(stepCapture.create(), context, expr,
+                                           rhs);
+      } else {
+        auto op = getOperator(nextTok->getKind());
+        if (!op) {
+          report(nextTok->getRange(), ParseDiagnostic::error_unparsable_token,
+                 "operator", Token::getTokenString(nextTok->getKind()));
+          return nullptr;
+        }
+        auto *rhs = parseExpression();
+        if (diag.hasError())
+          return nullptr;
+        step = OperatorAssignmentStatement::create(stepCapture.create(),
+                                                   context, expr, *op, rhs);
+      }
+    }
+  }
+
+  if (consume<Token::Tok_RParen>())
+    return nullptr;
+
+  if (consume<Token::Tok_LBrace>())
+    return nullptr;
+
+  auto stmts = parseStatements();
+  if (diag.hasError())
+    return nullptr;
+
+  if (consume<Token::Tok_RBrace>())
+    return nullptr;
+
+  return ForStatement::create(capture.create(), context, decl, cond, step,
+                              stmts);
 }
+
 ReturnStatement *Parser::parseReturnStatement() {
   RangeCapture capture(*this);
   if (consume<Token::Tok_return>())
@@ -241,12 +336,73 @@ DeclarationStatement *Parser::parseDeclarationStatement() {
 }
 
 AssignmentStatement *Parser::parseAssignmentStatement(Expression *lhs) {
-  llvm_unreachable("Not implemented");
+  RangeCapture capture(*this, lhs->getRange().Start);
+  if (diag.hasError())
+    return nullptr;
+
+  if (consume<Token::Tok_Equal>())
+    return nullptr;
+
+  auto *expr = parseExpression();
+  if (diag.hasError())
+    return nullptr;
+
+  if (consume<Token::Tok_Semicolon>())
+    return nullptr;
+
+  return AssignmentStatement::create(capture.create(), context, lhs, expr);
+}
+
+static optional<Operator> getOperator(Token::Kind kind) {
+  switch (kind) {
+  case Token::Tok_PlusEqual:
+    return Operator::Plus;
+  case Token::Tok_MinusEqual:
+    return Operator::Minus;
+  case Token::Tok_StarEqual:
+    return Operator::Mul;
+  case Token::Tok_SlashEqual:
+    return Operator::Div;
+  case Token::Tok_PercentEqual:
+    return Operator::Mod;
+  case Token::Tok_VBarEqual:
+    return Operator::BitOr;
+  case Token::Tok_AmpersandEqual:
+    return Operator::BitAnd;
+  case Token::Tok_CaretEqual:
+    return Operator::BitXor;
+  case Token::Tok_LShiftEqual:
+    return Operator::Shl;
+  case Token::Tok_RShiftEqual:
+    return Operator::Shr;
+  default:
+    return nullopt;
+  }
 }
 
 OperatorAssignmentStatement *
 Parser::parseOperatorAssignmentStatement(Expression *lhs) {
-  llvm_unreachable("Not implemented");
+  RangeCapture capture(*this, lhs->getRange().Start);
+  if (diag.hasError())
+    return nullptr;
+
+  auto *nextTok = advance();
+  optional<Operator> op = getOperator(nextTok->getKind());
+  if (!op) {
+    report(nextTok->getRange(), ParseDiagnostic::error_unexpected_token,
+           "operator assignment", Token::getTokenString(nextTok->getKind()));
+    return nullptr;
+  }
+
+  auto *expr = parseExpression();
+  if (diag.hasError())
+    return nullptr;
+
+  if (consume<Token::Tok_Semicolon>())
+    return nullptr;
+
+  return OperatorAssignmentStatement::create(capture.create(), context, lhs,
+                                             *op, expr);
 }
 
 FunctionDeclaration *Parser::parseFunctionDeclaration() {
@@ -590,6 +746,27 @@ MatchExpression *Parser::parseMatchExpression() {
   return MatchExpression::create(capture.create(), context, expr, cases);
 }
 
+MatchExpression::MatchCase Parser::parseMatchCase() {
+  if (consume<Token::Tok_BackSlash>())
+    return {};
+
+  auto *pattern = parsePattern();
+  if (diag.hasError())
+    return {};
+
+  if (consume<Token::Tok_RightArrow>())
+    return {};
+
+  auto *expr = parseExpression();
+  if (diag.hasError())
+    return {};
+
+  if (consume<Token::Tok_Semicolon>())
+    return {};
+
+  return {pattern, expr};
+}
+
 LambdaExpression *Parser::parseLambdaExpression() {
   RangeCapture capture(*this);
   if (consume<Token::Tok_BackSlash>())
@@ -633,6 +810,68 @@ IdentifierExpression *Parser::parseIdentifierExpression() {
     return nullptr;
   return IdentifierExpression::create(identTok->getRange(), context,
                                       identTok->getSymbol());
+}
+
+Expression *Parser::parseTupleOrGroupExpression() {
+  RangeCapture capture(*this);
+  if (consume<Token::Tok_LParen>())
+    return nullptr;
+
+  SmallVector<Expression *> exprs;
+  bool isTuple = false;
+  if (!peekIs<Token::Tok_Comma>()) {
+    auto *expr = parseExpression();
+    if (diag.hasError())
+      return nullptr;
+    exprs.emplace_back(expr);
+    if (peekIs<Token::Tok_Comma>())
+      isTuple = true;
+
+    while (peekIs<Token::Tok_Comma>()) {
+      skip();
+      if (peekIs<Token::Tok_RParen>())
+        break;
+      expr = parseExpression();
+      if (diag.hasError())
+        return nullptr;
+      exprs.emplace_back(expr);
+    }
+  }
+
+  if (consume<Token::Tok_RParen>())
+    return nullptr;
+
+  if (isTuple)
+    return TupleExpression::create(capture.create(), context, exprs);
+  return GroupExpression::create(capture.create(), context, exprs[0]);
+}
+
+ArrayExpression *Parser::parseArrayExpression() {
+  if (consume<Token::Tok_LBracket>())
+    return nullptr;
+
+  SmallVector<Expression *> exprs;
+  if (!peekIs<Token::Tok_RBracket>()) {
+    auto *expr = parseExpression();
+    if (diag.hasError())
+      return nullptr;
+    exprs.emplace_back(expr);
+
+    while (peekIs<Token::Tok_Comma>()) {
+      skip();
+      if (peekIs<Token::Tok_RBracket>())
+        break;
+      expr = parseExpression();
+      if (diag.hasError())
+        return nullptr;
+      exprs.emplace_back(expr);
+    }
+  }
+
+  if (consume<Token::Tok_RBracket>())
+    return nullptr;
+
+  return ArrayExpression::create(tok->getRange(), context, exprs);
 }
 
 IntegerLiteral *Parser::parseIntegerLiteral() {
@@ -680,6 +919,8 @@ Pattern *Parser::parsePattern() {
     return parseBooleanPattern();
   case Token::Tok_StringLiteral:
     return parseStringPattern();
+  case Token::Tok_nil:
+    return parseNilPattern();
   default:
     report(peekTok->getRange(), ParseDiagnostic::error_unparsable_token,
            "pattern", Token::getTokenString(peekTok->getKind()));
@@ -766,6 +1007,13 @@ StringPattern *Parser::parseStringPattern() {
                                stringTok->getSymbol());
 }
 
+NilPattern *Parser::parseNilPattern() {
+  auto *nilTok = advance();
+  if (expect<Token::Tok_nil>(nilTok))
+    return nullptr;
+  return NilPattern::create(nilTok->getRange(), context);
+}
+
 Token *Parser::advance() { return tok = lexer.getNextToken(); }
 
 void Parser::skip() { advance(); }
@@ -773,9 +1021,47 @@ void Parser::skip() { advance(); }
 Token *Parser::peek(size_t look) { return lexer.peekToken(look); }
 
 void Parser::commonRecovery() {
-  recovery<Token::Tok_LBrace, Token::Tok_if, Token::Tok_while, Token::Tok_do,
-           Token::Tok_for, Token::Tok_return, Token::Tok_break,
-           Token::Tok_continue, Token::Tok_var, Token::Tok_fn>();
+  auto peekTok = peek();
+  while (!peekTok->is<Token::Tok_LBrace, Token::Tok_if, Token::Tok_while,
+                      Token::Tok_do, Token::Tok_for, Token::Tok_return,
+                      Token::Tok_break, Token::Tok_continue, Token::Tok_var,
+                      Token::Tok_fn, Token::Tok_Eof>()) {
+    skip();
+    if (peekTok->is<Token::Tok_Semicolon>())
+      break;
+    peekTok = peek();
+  }
+}
+
+vector<Statement *> Parser::parseStatements() {
+  vector<Statement *> stmts;
+  while (!peekIs<Token::Tok_RBrace, Token::Tok_Eof>()) {
+    auto *stmt = parseStatement();
+    if (diag.hasError()) {
+      commonRecovery();
+      continue;
+    }
+    stmts.emplace_back(stmt);
+  }
+  return stmts;
+}
+
+const char *parserDiagMsgs[] = {
+#define DIAG(Name, Msg, Error) Msg,
+#include "bara/parser/ParserDiagnostic.def"
+};
+
+const llvm::SourceMgr::DiagKind parserDiagKinds[] = {
+#define DIAG(Name, Msg, Error) llvm::SourceMgr::DK_##Error,
+#include "bara/parser/ParserDiagnostic.def"
+};
+
+const char *Parser::ParseDiagnostic::getDiagMsg(Diag kind) {
+  return parserDiagMsgs[kind];
+}
+
+llvm::SourceMgr::DiagKind Parser::ParseDiagnostic::getDiagKind(Diag kind) {
+  return parserDiagKinds[kind];
 }
 
 } // namespace bara

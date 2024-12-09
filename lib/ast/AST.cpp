@@ -456,9 +456,9 @@ void ASTPrintVisitor::visit(const ForStatement &ast) {
       printer << "= ";
       opAssign->getRhs()->accept(*this);
     } else if (auto *assign = step->dyn_cast<AssignmentStatement>()) {
-      assign->getPattern()->accept(*this);
+      assign->getLhs()->accept(*this);
       printer << " = ";
-      assign->getExpr()->accept(*this);
+      assign->getRhs()->accept(*this);
     } else {
       step->accept(*this);
     }
@@ -600,15 +600,15 @@ void ASTEqualVisitor::visit(const DeclarationStatement &other) {
 
 AssignmentStatement *AssignmentStatement::create(SMRange range,
                                                  ASTContext *context,
-                                                 Pattern *pattern,
-                                                 Expression *init) {
-  return context->make<AssignmentStatement>(range, pattern, init);
+                                                 Expression *lhs,
+                                                 Expression *rhs) {
+  return context->make<AssignmentStatement>(range, lhs, rhs);
 }
 
 void ASTPrintVisitor::visit(const AssignmentStatement &ast) {
-  ast.getPattern()->accept(*this);
+  ast.getLhs()->accept(*this);
   printer << " = ";
-  ast.getExpr()->accept(*this);
+  ast.getRhs()->accept(*this);
   printer << ";";
 }
 
@@ -619,12 +619,12 @@ void ASTEqualVisitor::visit(const AssignmentStatement &other) {
   }
 
   auto *thisStmt = thisAST->cast<AssignmentStatement>();
-  if (!thisStmt->getPattern()->isEqual(other.getPattern())) {
+  if (!thisStmt->getLhs()->isEqual(other.getLhs())) {
     equal = false;
     return;
   }
 
-  if (!thisStmt->getExpr()->isEqual(other.getExpr())) {
+  if (!thisStmt->getRhs()->isEqual(other.getRhs())) {
     equal = false;
     return;
   }
@@ -968,7 +968,7 @@ void ASTEqualVisitor::visit(const UnaryExpression &other) {
 CallExpression *CallExpression::create(SMRange range, ASTContext *context,
                                        Expression *callee,
                                        ArrayRef<Expression *> args) {
-  auto allocSize = totalSizeToAlloc<Expression *>(args.size());
+  auto allocSize = totalSizeToAlloc<Expression *>(args.size() + 1);
   void *mem = context->alloc(allocSize);
   auto *callExpr = new (mem) CallExpression(range, args.size());
   auto exprs = callExpr->getTrailingObjects<Expression *>();
@@ -1236,7 +1236,7 @@ StringLiteral *StringLiteral::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const StringLiteral &ast) {
-  printer << '"' << ast.getValue() << '"';
+  printer << ast.getValue();
 }
 
 void ASTEqualVisitor::visit(const StringLiteral &other) {
@@ -1321,6 +1321,151 @@ void ASTEqualVisitor::visit(const TuplePattern &other) {
   auto *thisPattern = thisAST->cast<TuplePattern>();
   equal = isEqualASTArray<Pattern *>(thisPattern->getPatterns(),
                                      other.getPatterns());
+}
+
+//===----------------------------------------------------------------------===//
+/// TuplePattern
+//===----------------------------------------------------------------------===//
+
+GroupPattern *GroupPattern::create(SMRange range, ASTContext *context,
+                                   Pattern *pattern) {
+  return context->make<GroupPattern>(range, pattern);
+}
+
+void ASTPrintVisitor::visit(const GroupPattern &ast) {
+  printer << "(";
+  ast.getPattern()->accept(*this);
+  printer << ")";
+}
+
+void ASTEqualVisitor::visit(const GroupPattern &other) {
+  if (!thisAST->isa<GroupPattern>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisPattern = thisAST->cast<GroupPattern>();
+  equal = thisPattern->getPattern()->isEqual(other.getPattern());
+}
+
+//===----------------------------------------------------------------------===//
+/// IntegerPattern
+//===----------------------------------------------------------------------===//
+
+IntegerPattern *IntegerPattern::create(SMRange range, ASTContext *context,
+                                       uint64_t value) {
+  return context->make<IntegerPattern>(range, value);
+}
+
+void ASTPrintVisitor::visit(const IntegerPattern &ast) {
+  printer << ast.getValue();
+}
+
+void ASTEqualVisitor::visit(const IntegerPattern &other) {
+  if (!thisAST->isa<IntegerPattern>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisPattern = thisAST->cast<IntegerPattern>();
+  equal = thisPattern->getValue() == other.getValue();
+}
+
+//===----------------------------------------------------------------------===//
+/// FloatPattern
+//===----------------------------------------------------------------------===//
+
+FloatPattern *FloatPattern::create(SMRange range, ASTContext *context,
+                                   StringRef value) {
+  return context->make<FloatPattern>(range, value);
+}
+
+void ASTPrintVisitor::visit(const FloatPattern &ast) {
+  printer << ast.getValue();
+}
+
+void ASTEqualVisitor::visit(const FloatPattern &other) {
+  if (!thisAST->isa<FloatPattern>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisPattern = thisAST->cast<FloatPattern>();
+  equal = thisPattern->getValue() == other.getValue();
+}
+
+//===----------------------------------------------------------------------===//
+/// StringPattern
+//===----------------------------------------------------------------------===//
+
+StringPattern *StringPattern::create(SMRange range, ASTContext *context,
+                                     StringRef value) {
+  return context->make<StringPattern>(range, value);
+}
+
+void ASTPrintVisitor::visit(const StringPattern &ast) {
+  printer << ast.getValue();
+}
+
+void ASTEqualVisitor::visit(const StringPattern &other) {
+  if (!thisAST->isa<StringPattern>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisPattern = thisAST->cast<StringPattern>();
+  equal = thisPattern->getValue() == other.getValue();
+}
+
+//===----------------------------------------------------------------------===//
+/// BooleanPattern
+//===----------------------------------------------------------------------===//
+
+BooleanPattern *BooleanPattern::create(SMRange range, ASTContext *context,
+                                       bool value) {
+  return context->make<BooleanPattern>(range, value);
+}
+
+void ASTPrintVisitor::visit(const BooleanPattern &ast) {
+  printer << (ast.getValue() ? "true" : "false");
+}
+
+void ASTEqualVisitor::visit(const BooleanPattern &other) {
+  if (!thisAST->isa<BooleanPattern>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisPattern = thisAST->cast<BooleanPattern>();
+  equal = thisPattern->getValue() == other.getValue();
+}
+
+//===----------------------------------------------------------------------===//
+/// EmptyPattern
+//===----------------------------------------------------------------------===//
+
+EmptyPattern *EmptyPattern::create(SMRange range, ASTContext *context) {
+  return context->make<EmptyPattern>(range);
+}
+
+void ASTPrintVisitor::visit(const EmptyPattern &ast) { printer << "_"; }
+
+void ASTEqualVisitor::visit(const EmptyPattern &other) {
+  equal = thisAST->isa<EmptyPattern>();
+}
+
+//===----------------------------------------------------------------------===//
+/// NilPattern
+//===----------------------------------------------------------------------===//
+
+NilPattern *NilPattern::create(SMRange range, ASTContext *context) {
+  return context->make<NilPattern>(range);
+}
+
+void ASTPrintVisitor::visit(const NilPattern &ast) { printer << "nil"; }
+
+void ASTEqualVisitor::visit(const NilPattern &other) {
+  equal = thisAST->isa<NilPattern>();
 }
 
 } // namespace bara

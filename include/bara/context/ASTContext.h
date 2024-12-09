@@ -3,7 +3,7 @@
 
 #include "bara/ast/AST.h"
 #include <cstdlib>
-#include <vector>
+#include <unordered_set>
 
 namespace bara {
 
@@ -14,13 +14,14 @@ public:
   ~ASTContext();
 
   void *alloc(std::size_t size);
+
   template <typename T, typename... Ts>
   T *make(Ts &&...args) {
     return new (alloc(sizeof(T))) T(std::forward<Ts>(args)...);
   }
 
 private:
-  std::vector<void *> allocations{};
+  vector<void *> allocations{};
 };
 } // namespace bara
 

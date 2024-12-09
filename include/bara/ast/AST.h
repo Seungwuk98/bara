@@ -79,6 +79,8 @@ public:
 
   bool isEqual(const AST *other) const;
 
+  SMRange getRange() const { return range; }
+
 protected:
   AST(SMRange range, ASTKind kind) : range(range), kind(kind) {};
 
@@ -360,24 +362,23 @@ private:
   optional<Expression *> init;
 };
 
-/// AssignmentStatement ::= Pattern '=' Expression ';'
+/// AssignmentStatement ::= Expression '=' Expression ';'
 class AssignmentStatement final
     : public ASTBase<AssignmentStatement, Statement> {
   friend class ASTContext;
-  AssignmentStatement(SMRange range, Pattern *pattern, Expression *expr)
-      : ASTBase(range, ASTKind::AssignmentStatement), pattern(pattern),
-        expr(expr) {}
+  AssignmentStatement(SMRange range, Expression *lhs, Expression *rhs)
+      : ASTBase(range, ASTKind::AssignmentStatement), lhs(lhs), rhs(rhs) {}
 
 public:
   static AssignmentStatement *create(SMRange range, ASTContext *context,
-                                     Pattern *pattern, Expression *expr);
+                                     Expression *lhs, Expression *rhs);
 
-  Pattern *getPattern() const { return pattern; }
-  Expression *getExpr() const { return expr; }
+  Expression *getLhs() const { return lhs; }
+  Expression *getRhs() const { return rhs; }
 
 private:
-  Pattern *pattern;
-  Expression *expr;
+  Expression *lhs;
+  Expression *rhs;
 };
 
 /// OperatorAssignmentStatement ::= Identifier | IndexExpression
@@ -463,9 +464,8 @@ public:
 
   Expression *getExpr() const { return expr; }
   size_t getMatchCaseSize() const { return matchCaseSize; }
-  ArrayRef<std::pair<Pattern *, Statement *>> getMatchCases() const {
-    return {getTrailingObjects<std::pair<Pattern *, Statement *>>(),
-            matchCaseSize};
+  ArrayRef<MatchCase> getMatchCases() const {
+    return {getTrailingObjects<MatchCase>(), matchCaseSize};
   }
 
 private:
@@ -636,7 +636,8 @@ private:
 };
 
 /// TupleExpression ::=
-///   '(' Expression? ',' ')'
+///   | '(' ')'
+///   | '(' Expression? ',' ')'
 ///   | '(' Expression (',' Expression)+ ','? ')'
 class TupleExpression final
     : public ASTBase<TupleExpression, Expression>,
@@ -761,7 +762,10 @@ private:
   string name;
 };
 
-/// TuplePattern ::= '(' Pattern (',' Pattern)* ','? ')'
+/// TuplePattern ::=
+///   | '(' ')'
+///   | '(' Pattern? ',' ')'
+///   | '(' Pattern (',' Pattern)+ ','? ')'
 class TuplePattern final : public ASTBase<TuplePattern, Pattern>,
                            public TrailingObjects<TuplePattern, Pattern *> {
   TuplePattern(SMRange range, size_t size)
@@ -862,6 +866,14 @@ class EmptyPattern final : public ASTBase<BooleanPattern, Pattern> {
 
 public:
   static EmptyPattern *create(SMRange range, ASTContext *context);
+};
+
+class NilPattern final : public ASTBase<NilPattern, Pattern> {
+  friend class ASTContext;
+  NilPattern(SMRange range) : ASTBase(range, ASTKind::NilPattern) {}
+
+public:
+  static NilPattern *create(SMRange range, ASTContext *context);
 };
 
 } // namespace bara

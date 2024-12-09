@@ -186,6 +186,8 @@ private:
 
   StringPattern *parseStringPattern();
 
+  NilPattern *parseNilPattern();
+
   vector<Statement *> parseStatements();
 
 private:
@@ -200,9 +202,6 @@ private:
 
   template <Token::Kind... Kind>
   bool consume();
-
-  template <Token::Kind... Point>
-  void recovery();
 
   void commonRecovery();
 
@@ -222,6 +221,7 @@ private:
                 llvm::formatv(ParseDiagnostic::getDiagMsg(kind),
                               std::forward<Args>(args)...)
                     .str());
+    abort();
   }
 
   struct RangeCapture {
@@ -239,6 +239,8 @@ private:
     SMLoc start;
   };
 
+  friend class PatternToExprVisitor;
+
 private:
   Lexer &lexer;
   Diagnostic &diag;
@@ -248,7 +250,7 @@ private:
 
 template <Token::Kind... Kind>
 bool Parser::peekIs() {
-  return tok->is<Kind...>();
+  return peek()->is<Kind...>();
 }
 
 template <Token::Kind Kind>

@@ -38,5 +38,6 @@ AST_KIND(StringPattern)
 AST_KIND(BooleanPattern)
 AST_KIND(FloatPattern)
 AST_KIND(EmptyPattern)
+AST_KIND(NilPattern)
 
 #undef AST_KIND

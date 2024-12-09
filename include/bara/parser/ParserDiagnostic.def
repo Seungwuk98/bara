@@ -2,7 +2,10 @@
 #define DIAG(Name, Msg, Error)
 #endif // DIAG
 
-DIAG(error_unexpected_token, "Unexpected token. expect: ({}), got: ({})", Error)
-DIAG(error_unparsable_token, "Unparsable token for '{}'. got: ({})", Error)
+DIAG(error_unexpected_token, "Unexpected token. expect: ({0}), got: ({1})",
+     Error)
+DIAG(error_unparsable_token, "Unparsable token for '{0}'. got: ({1})", Error)
+DIAG(error_unchangable_expression_to_pattern_ast,
+     "Correspond ast can't be pattern.", Error)
 
 #undef DIAG
