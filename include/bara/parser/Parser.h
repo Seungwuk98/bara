@@ -164,6 +164,10 @@ private:
 
   FloatLiteral *parseFloatLiteral();
 
+  StringLiteral *parseStringLiteral();
+
+  NilLiteral *parseNilLiteral();
+
   /// Pattern ::= IdentifierPattern | TuplePattern | IntegerPattern |
   /// FloatPattern | StringPattern | GroupPattern | EmptyPattern
   Pattern *parsePattern();

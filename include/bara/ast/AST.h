@@ -632,7 +632,7 @@ public:
   StringRef getName() const { return name; }
 
 private:
-  string name;
+  StringRef name;
 };
 
 /// TupleExpression ::=
@@ -759,7 +759,7 @@ public:
   StringRef getName() const { return name; }
 
 private:
-  string name;
+  StringRef name;
 };
 
 /// TuplePattern ::=
@@ -828,7 +828,7 @@ public:
   StringRef getValue() const { return value; }
 
 private:
-  string value;
+  StringRef value;
 };
 
 class StringPattern final : public ASTBase<StringPattern, Pattern> {
@@ -843,7 +843,7 @@ public:
   StringRef getValue() const { return value; }
 
 private:
-  string value;
+  StringRef value;
 };
 
 class BooleanPattern final : public ASTBase<BooleanPattern, Pattern> {
@@ -860,7 +860,7 @@ private:
   bool value;
 };
 
-class EmptyPattern final : public ASTBase<BooleanPattern, Pattern> {
+class EmptyPattern final : public ASTBase<EmptyPattern, Pattern> {
   friend class ASTContext;
   EmptyPattern(SMRange range) : ASTBase(range, ASTKind::EmptyPattern) {}
 

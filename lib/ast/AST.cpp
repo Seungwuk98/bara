@@ -757,10 +757,11 @@ void ASTPrintVisitor::visit(const MatchExpression &ast) {
   {
     ASTPrinter::AddIndentScope scope(printer);
     for (auto [idx, matchCase] : llvm::enumerate(ast.getMatchCases())) {
-      printer.ln();
+      printer.ln() << '\\';
       matchCase.first->accept(*this);
-      printer << " : ";
+      printer << " => ";
       matchCase.second->accept(*this);
+      printer << ';';
     }
   }
   printer.ln() << "}";
@@ -1117,7 +1118,7 @@ void ASTPrintVisitor::visit(const TupleExpression &ast) {
     if (idx != ast.getExprs().size() - 1)
       printer << ", ";
   }
-  if (ast.getExprs().size() <= 1)
+  if (ast.getExprs().size() == 1)
     printer << ",";
   printer << ")";
 }

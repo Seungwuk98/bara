@@ -1,0 +1,58 @@
+// RUN: bara %s -ast-print | FileCheck %s
+
+
+//===----------------------------------------------------------------------===//
+/// Match 
+//===----------------------------------------------------------------------===//
+
+fn match1(a) {
+  // CHECK-LABEL: fn match1(a)
+  return match a {
+    \1 => "one";
+    \2 => "two";
+    \3 => "three";
+    \_ => "else";
+  };
+  // CHECK-NEXT: return match a 
+  // CHECK-NEXT:  \1 => "one";
+  // CHECK-NEXT:  \2 => "two";
+  // CHECK-NEXT:  \3 => "three";
+  // CHECK-NEXT:  \_ => "else";
+}
+
+//===----------------------------------------------------------------------===//
+/// Match 2 
+//===----------------------------------------------------------------------===//
+
+fn match2(a) {
+  // CHECK-LABEL: fn match2(a)
+  return match a {
+    \(1, 2) => "case 1";
+    \(3, 4) => "case 2";
+    \(4, 5) => "case 3";
+    \_ => "else";
+  };
+  // CHECK-NEXT: return match a 
+  // CHECK-NEXT:  \(1, 2) => "case 1";
+  // CHECK-NEXT:  \(3, 4) => "case 2";
+  // CHECK-NEXT:  \(4, 5) => "case 3";
+  // CHECK-NEXT:  \_ => "else";
+}
+
+//===----------------------------------------------------------------------===//
+/// Match 3
+//===----------------------------------------------------------------------===//
+
+fn match3(a, b) {
+  // CHECK-LABEL: fn match3(a, b)
+  return match (a, b) {
+    \(1, _) => "case 1";
+    \(_, 2) => "case 2";
+    \(a, b) => "case 3";
+  };
+  // CHECK-NEXT: return match (a, b)
+  // CHECK-NEXT:  \(1, _) => "case 1";
+  // CHECK-NEXT:  \(_, 2) => "case 2";
+  // CHECK-NEXT:  \(a, b) => "case 3";
+}
+

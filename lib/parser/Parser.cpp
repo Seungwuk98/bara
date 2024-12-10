@@ -701,6 +701,8 @@ Expression *Parser::parsePrimaryExpression() {
     return parseIntegerLiteral();
   case Token::Tok_FloatLiteral:
     return parseFloatLiteral();
+  case Token::Tok_StringLiteral:
+    return parseStringLiteral();
   case Token::Tok_true:
   case Token::Tok_false:
     return parseBooleanLiteral();
@@ -712,6 +714,8 @@ Expression *Parser::parsePrimaryExpression() {
     return parseMatchExpression();
   case Token::Tok_BackSlash:
     return parseLambdaExpression();
+  case Token::Tok_nil:
+    return parseNilLiteral();
   default:
     report(peekTok->getRange(), ParseDiagnostic::error_unparsable_token,
            "primary expression", Token::getTokenString(peekTok->getKind()));
@@ -819,11 +823,17 @@ Expression *Parser::parseTupleOrGroupExpression() {
 
   SmallVector<Expression *> exprs;
   bool isTuple = false;
-  if (!peekIs<Token::Tok_Comma>()) {
+  if (peekIs<Token::Tok_Comma>()) {
+    skip();
+    isTuple = true;
+  } else if (peekIs<Token::Tok_RParen>()) {
+    isTuple = true;
+  } else {
     auto *expr = parseExpression();
     if (diag.hasError())
       return nullptr;
     exprs.emplace_back(expr);
+
     if (peekIs<Token::Tok_Comma>())
       isTuple = true;
 
@@ -851,7 +861,9 @@ ArrayExpression *Parser::parseArrayExpression() {
     return nullptr;
 
   SmallVector<Expression *> exprs;
-  if (!peekIs<Token::Tok_RBracket>()) {
+  if (peekIs<Token::Tok_Comma>()) {
+    skip();
+  } else if (!peekIs<Token::Tok_RBracket>()) {
     auto *expr = parseExpression();
     if (diag.hasError())
       return nullptr;
@@ -902,6 +914,21 @@ FloatLiteral *Parser::parseFloatLiteral() {
                               floatTok->getSymbol());
 }
 
+StringLiteral *Parser::parseStringLiteral() {
+  auto *stringTok = advance();
+  if (expect<Token::Tok_StringLiteral>(stringTok))
+    return nullptr;
+  return StringLiteral::create(stringTok->getRange(), context,
+                               stringTok->getSymbol());
+}
+
+NilLiteral *Parser::parseNilLiteral() {
+  auto *nilTok = advance();
+  if (expect<Token::Tok_nil>(nilTok))
+    return nullptr;
+  return NilLiteral::create(nilTok->getRange(), context);
+}
+
 Pattern *Parser::parsePattern() {
   auto peekTok = peek();
 
@@ -944,11 +971,17 @@ Pattern *Parser::parseTupleOrGroupPattern() {
 
   SmallVector<Pattern *> patterns;
   bool isTuple = false;
-  if (!peekIs<Token::Tok_Comma>()) {
+  if (peekIs<Token::Tok_Comma>()) {
+    skip();
+    isTuple = true;
+  } else if (peekIs<Token::Tok_RParen>()) {
+    isTuple = true;
+  } else {
     auto *pattern = parsePattern();
     if (diag.hasError())
       return nullptr;
     patterns.emplace_back(pattern);
+
     if (peekIs<Token::Tok_Comma>())
       isTuple = true;
 

@@ -1,65 +1,45 @@
 // RUN: bara %s -ast-print | FileCheck %s
 
-//===----------------------------------------------------------------------===//
-/// Sum 
-//===----------------------------------------------------------------------===//
-
-var sum = 0;
-
-for (var i = 0; i < 20; i += 1) {
-  sum += i;
-}
-
-print(sum);
-
-// CHECK: var sum = 0;
-
-// CHECK-LABEL: for (var i = 0; i < 20; i += 1)
-// CHECK-NEXT:   sum += i;
-
-// CHECK: print(sum);
 
 //===----------------------------------------------------------------------===//
-/// Empty For
+/// empty parameter Lambda 
 //===----------------------------------------------------------------------===//
 
+var lambda = \ => 1;
+var x = lambda();
 
-for (;;) {}
-
-// CHECK-LABEL: for (; ; ) 
-
-//===----------------------------------------------------------------------===//
-/// No Cond
-//===----------------------------------------------------------------------===//
-
-for (var i = 0;; i += 1) {
-  if i < 20 {
-    break;
-  } else {
-    continue;
-  }
-}
-
-// CHECK-LABEL: for (var i = 0; ; i += 1) 
-// CHECK-NEXT:  if i < 20
-// CHECK-NEXT:    break;
-// CHECK-NEXT:  else 
-// CHECK-NEXT:    continue;
+// CHECK: var lambda = \ => 1;
+// CHECK: var x = lambda();
 
 
 //===----------------------------------------------------------------------===//
-/// Compound Step
+/// various parameter Lambda 
 //===----------------------------------------------------------------------===//
 
-for (var i = 0;; {
-  i += 1;
-  i += 2;
-}) {}
+var lambda2 = \a, b, c => a + b + c;
+var y = lambda2(1, 2, 3);
 
-/// CHECK-LABEL: for (var i = 0; ; {
-/// CHECK-NEXT:  i += 1;
-/// CHECK-NEXT:  i += 2;
-/// CHECK-NEXT: }) {
-/// CHECK-NEXT: }
+// CHECK: var lambda2 = \a, b, c => a + b + c;
+// CHECK: var y = lambda2(1, 2, 3);
 
 
+//===----------------------------------------------------------------------===//
+/// various parameter Lambda - 2 
+//===----------------------------------------------------------------------===//
+
+var lambda3 = \(a, b) => a + b;
+var z = lambda3((1, 2));
+
+// CHECK: var lambda3 = \(a, b) => a + b;
+// CHECK: var z = lambda3((1, 2));
+
+
+//===----------------------------------------------------------------------===//
+/// various parameter Lambda - 3
+//===----------------------------------------------------------------------===//
+
+var lambda4 = \(a, b), (c, d) => a + b;
+var z = lambda4((1, 2), (3, 4));
+
+// CHECK: var lambda4 = \(a, b), (c, d) => a + b;
+// CHECK: var z = lambda4((1, 2), (3, 4));
