@@ -36,6 +36,10 @@ class ValueMemory final : public Memory {
   }
 
 public:
+  Value *view() const { return value.get(); }
+  unique_ptr<Value> load() { return std::move(value); }
+  void assign(unique_ptr<Value> value) { this->value = std::move(value); }
+
   static ValueMemory *create(MemoryContext *context, unique_ptr<Value> value);
 
 private:
@@ -58,7 +62,8 @@ private:
 class VectorMemory final : public Memory {
 
 public:
-  static VectorMemory *create(MemoryContext *context, ArrayRef<Memory *> mems);
+  static VectorMemory *create(MemoryContext *context,
+                              ArrayRef<ValueMemory *> mems);
 
   static bool classof(const Memory *mem) {
     return mem->getKind() == MemoryKind::Vector;
@@ -66,15 +71,16 @@ public:
 
   Memory *get(size_t index) const { return mems[index]; }
   size_t size() const { return mems.size(); }
+  bool empty() const { return mems.empty(); }
   auto begin() const { return mems.begin(); }
   auto end() const { return mems.end(); }
 
   void reserve(size_t size) { mems.reserve(size); }
-  void push(Memory *mem) { mems.emplace_back(mem); }
+  void push(ValueMemory *mem) { mems.emplace_back(mem); }
   void pop() { mems.pop_back(); }
 
 private:
-  vector<Memory *> mems;
+  vector<ValueMemory *> mems;
 };
 
 } // namespace bara

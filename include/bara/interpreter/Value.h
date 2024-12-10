@@ -14,6 +14,7 @@ using llvm::APFloat;
 enum class ValueKind {
 #define VALUE(Name) Name,
 #include "bara/interpreter/Value.def"
+  NUM
 };
 
 #define VALUE(Name) class Name##Value;
@@ -42,11 +43,36 @@ using ConstValueVisitorBase =
 
 class Value {
 public:
+  using KindTy = ValueKind;
+
+  template <typename... U>
+  bool isa() const {
+    return llvm::isa<U...>(this);
+  }
+  template <typename U>
+  const U *cast() const {
+    return llvm::cast<U>(this);
+  }
+  template <typename U>
+  U *cast() {
+    return llvm::cast<U>(this);
+  }
+  template <typename U>
+  const U *dyn_cast() const {
+    return llvm::dyn_cast<U>(this);
+  }
+  template <typename U>
+  U *dyn_cast() {
+    return llvm::dyn_cast<U>(this);
+  }
+
   ValueKind getKind() const { return kind; }
 
   string toString() const;
   unique_ptr<Value> clone() const;
   optional<bool> toBool() const;
+
+  void accept(ConstValueVisitor &visitor) const;
 
 protected:
   Value(ValueKind kind) : kind(kind) {}
@@ -127,28 +153,33 @@ public:
   static unique_ptr<ListValue>
   create(MemoryContext *context, MutableArrayRef<unique_ptr<Value>> values);
 
-  VectorMemory *getVectorMemory() { return memory; }
+  VectorMemory *getVectorMemory() const { return memory; }
   Memory *getElement(size_t index) { return memory->get(index); }
+  size_t size() const { return memory->size(); }
+  bool empty() const { return memory->empty(); }
 
 private:
   VectorMemory *memory;
 };
 
 class TupleValue final : public Value {
-  TupleValue(ArrayRef<Memory *> mems) : Value(ValueKind::Tuple), mems(mems) {}
+  TupleValue(ArrayRef<ValueMemory *> mems)
+      : Value(ValueKind::Tuple), mems(mems) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Tuple;
   }
 
-  static unique_ptr<TupleValue> create(ArrayRef<Memory *> mems);
+  static unique_ptr<TupleValue> create(ArrayRef<ValueMemory *> mems);
 
-  ArrayRef<Memory *> getMems() const { return mems; }
+  ArrayRef<ValueMemory *> getMemories() const { return mems; }
   Memory *getElement(size_t index) const { return mems[index]; }
+  size_t size() const { return mems.size(); }
+  bool empty() const { return mems.empty(); }
 
 private:
-  const vector<Memory *> mems;
+  const vector<ValueMemory *> mems;
 };
 
 class NilValue final : public Value {
@@ -175,7 +206,7 @@ public:
                                           FunctionDeclaration *decl);
 
   Environment &getEnvironment() { return env; }
-  FunctionDeclaration *getDeclaration() { return decl; }
+  FunctionDeclaration *getDeclaration() const { return decl; }
 
 private:
   Environment env;
@@ -195,7 +226,7 @@ public:
                                         LambdaExpression *expr);
 
   Environment &getEnvironment() { return env; }
-  LambdaExpression *getExpression() { return expr; }
+  LambdaExpression *getExpression() const { return expr; }
 
 private:
   Environment env;
