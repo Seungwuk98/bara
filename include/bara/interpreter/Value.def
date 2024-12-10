@@ -1,0 +1,15 @@
+#ifndef VALUE
+#define VALUE(Name)
+#endif
+
+VALUE(Integer)
+VALUE(Bool)
+VALUE(Float)
+VALUE(String)
+VALUE(Tuple)
+VALUE(List)
+VALUE(Nil)
+VALUE(Function)
+VALUE(Lambda)
+
+#undef VALUE

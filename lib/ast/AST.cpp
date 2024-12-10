@@ -1,14 +1,13 @@
 #include "bara/ast/AST.h"
-#include "bara/ast/ASTVisitor.h"
 #include "bara/context/ASTContext.h"
 #include <cassert>
 
 namespace bara {
 
-class ASTPrintVisitor : public ConstVisitorBase<ASTPrintVisitor
+class ASTPrintVisitor : public ConstASTVisitorBase<ASTPrintVisitor
 #define AST_KIND(NAME) , NAME
 #include "bara/ast/AST.def"
-                                                > {
+                                                   > {
 public:
   ASTPrintVisitor(ASTPrinter &printer) : printer(printer) {}
 
@@ -87,10 +86,10 @@ static void printOperator(raw_ostream &os, Operator op) {
   }
 }
 
-class ASTEqualVisitor : public ConstVisitorBase<ASTEqualVisitor
+class ASTEqualVisitor : public ConstASTVisitorBase<ASTEqualVisitor
 #define AST_KIND(NAME) , NAME
 #include "bara/ast/AST.def"
-                                                > {
+                                                   > {
 public:
   ASTEqualVisitor(const AST *ast) : thisAST(ast) {}
 
@@ -124,8 +123,8 @@ private:
   bool equal = true;
 };
 
-void AST::accept(Visitor &visitor) { visitor.visit(*this); }
-void AST::accept(ConstVisitor &visitor) const { visitor.visit(*this); }
+void AST::accept(ASTVisitor &visitor) { visitor.visit(*this); }
+void AST::accept(ConstASTVisitor &visitor) const { visitor.visit(*this); }
 
 void AST::print(ASTPrinter &printer) const {
   ASTPrintVisitor visitor(printer);

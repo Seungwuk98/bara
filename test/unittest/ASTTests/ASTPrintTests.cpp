@@ -23,7 +23,7 @@ TEST(ASTPrintTests, TupleLiteral) {
 
   auto *tuple2 = TupleExpression::create({}, &context, {});
 
-  EXPECT_STREQ(tuple2->toString().c_str(), "(,)");
+  EXPECT_STREQ(tuple2->toString().c_str(), "()");
 
   auto *tuple3 = TupleExpression::create({}, &context,
                                          {

@@ -4,11 +4,10 @@
 #include "bara/ast/ASTPrinter.h"
 #include "bara/utils/LLVM.h"
 #include "bara/utils/STL.h"
+#include "bara/utils/VisitorBase.h"
 
 namespace bara {
-
-class Visitor;
-class ConstVisitor;
+class AST;
 
 #define AST_KIND(NAME) class NAME;
 #include "bara/ast/AST.def"
@@ -19,7 +18,7 @@ enum class ASTKind : uint16_t {
 #define AST_KIND(NAME) NAME,
 #include "bara/ast/AST.def"
 
-  NUM_OF_AST,
+  NUM,
 };
 
 namespace _inner {
@@ -34,8 +33,20 @@ struct ASTKindMap {};
 #include "bara/ast/AST.def"
 } // namespace _inner
 
+using ASTVisitor = utils::Visitor<AST>;
+template <typename ConcreteType, typename... ASTTypes>
+using ASTVisitorBase = utils::VisitorBase<ConcreteType, AST, false,
+                                          _inner::ASTKindMap, ASTTypes...>;
+
+using ConstASTVisitor = utils::Visitor<AST, true>;
+template <typename ConcreteType, typename... ASTTypes>
+using ConstASTVisitorBase = utils::VisitorBase<ConcreteType, AST, true,
+                                               _inner::ASTKindMap, ASTTypes...>;
+
 class AST {
 public:
+  using KindTy = ASTKind;
+
   template <typename... U>
   bool isa() const {
     return llvm::isa<U...>(this);
@@ -59,8 +70,8 @@ public:
 
   ASTKind getKind() const { return kind; }
 
-  void accept(Visitor &visitor);
-  void accept(ConstVisitor &visitor) const;
+  void accept(ASTVisitor &visitor);
+  void accept(ConstASTVisitor &visitor) const;
 
   string toString() const {
     string str;

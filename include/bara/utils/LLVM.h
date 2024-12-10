@@ -16,6 +16,7 @@ namespace bara {
 using llvm::ArrayRef;
 using llvm::DenseMap;
 using llvm::MapVector;
+using llvm::MutableArrayRef;
 using llvm::SmallVector;
 
 using llvm::errs;

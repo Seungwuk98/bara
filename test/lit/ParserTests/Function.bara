@@ -10,3 +10,5 @@ fn patternFunction((a, b), c) {
   return (a, b, c);
   // CHECK-NEXT:   return (a, b, c)
 }
+
+
