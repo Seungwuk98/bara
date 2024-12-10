@@ -5,3 +5,10 @@ add_library(
   Memory.cpp
   Value.cpp
 )
+
+target_link_libraries(
+  BaraInterpreter
+  PUBLIC
+  BaraAST
+  BaraContext
+)

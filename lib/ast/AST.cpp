@@ -1,5 +1,6 @@
 #include "bara/ast/AST.h"
 #include "bara/context/ASTContext.h"
+#include "llvm/Support/ManagedStatic.h"
 #include <cassert>
 
 namespace bara {
@@ -9,14 +10,18 @@ class ASTPrintVisitor : public ConstASTVisitorBase<ASTPrintVisitor
 #include "bara/ast/AST.def"
                                                    > {
 public:
-  ASTPrintVisitor(ASTPrinter &printer) : printer(printer) {}
+  ASTPrintVisitor() {}
+
+  void setPrinter(ASTPrinter *printer) { this->printer = printer; }
 
 #define AST_KIND(NAME) void visit(const NAME &ast);
 #include "bara/ast/AST.def"
 
 private:
-  ASTPrinter &printer;
+  ASTPrinter *printer;
 };
+
+llvm::ManagedStatic<ASTPrintVisitor> printVisitor;
 
 static void printOperator(raw_ostream &os, Operator op) {
   switch (op) {
@@ -91,7 +96,12 @@ class ASTEqualVisitor : public ConstASTVisitorBase<ASTEqualVisitor
 #include "bara/ast/AST.def"
                                                    > {
 public:
-  ASTEqualVisitor(const AST *ast) : thisAST(ast) {}
+  ASTEqualVisitor() {}
+
+  void init(const AST *ast) {
+    thisAST = ast;
+    equal = true;
+  }
 
 #define AST_KIND(NAME) void visit(const NAME &other);
 #include "bara/ast/AST.def"
@@ -120,21 +130,23 @@ public:
 
 private:
   const AST *thisAST;
-  bool equal = true;
+  bool equal;
 };
+
+llvm::ManagedStatic<ASTEqualVisitor> equalVisitor;
 
 void AST::accept(ASTVisitor &visitor) { visitor.visit(*this); }
 void AST::accept(ConstASTVisitor &visitor) const { visitor.visit(*this); }
 
 void AST::print(ASTPrinter &printer) const {
-  ASTPrintVisitor visitor(printer);
-  this->accept(visitor);
+  printVisitor->setPrinter(&printer);
+  this->accept(*printVisitor);
 }
 
 bool AST::isEqual(const AST *other) const {
-  ASTEqualVisitor visitor(other);
-  this->accept(visitor);
-  return visitor.isEqual();
+  equalVisitor->init(this);
+  this->accept(*equalVisitor);
+  return equalVisitor->isEqual();
 }
 
 //===----------------------------------------------------------------------===//
@@ -154,7 +166,7 @@ Program *Program::create(SMRange range, ASTContext *context,
 void ASTPrintVisitor::visit(const Program &ast) {
   for (auto stmt : ast.getStmts()) {
     stmt->accept(*this);
-    printer.ln();
+    printer->ln();
   }
 }
 
@@ -183,15 +195,15 @@ CompoundStatement *CompoundStatement::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const CompoundStatement &ast) {
-  printer << "{";
+  *printer << "{";
   {
-    ASTPrinter::AddIndentScope scope(printer);
+    ASTPrinter::AddIndentScope scope(*printer);
     for (auto stmt : ast.getStmts()) {
-      printer.ln();
+      printer->ln();
       stmt->accept(*this);
     }
   }
-  printer.ln() << "}";
+  printer->ln() << "}";
 }
 
 void ASTEqualVisitor::visit(const CompoundStatement &other) {
@@ -217,7 +229,7 @@ ExpressionStatement *ExpressionStatement::create(SMRange range,
 
 void ASTPrintVisitor::visit(const ExpressionStatement &ast) {
   ast.getExpr()->accept(*this);
-  printer << ';';
+  *printer << ';';
 }
 
 void ASTEqualVisitor::visit(const ExpressionStatement &other) {
@@ -260,27 +272,27 @@ IfStatement::create(SMRange range, ASTContext *context, Expression *cond,
 }
 
 void ASTPrintVisitor::visit(const IfStatement &ast) {
-  printer << "if ";
+  *printer << "if ";
   ast.getCond()->accept(*this);
-  printer << " {";
+  *printer << " {";
   {
-    ASTPrinter::AddIndentScope scope(printer);
+    ASTPrinter::AddIndentScope scope(*printer);
     for (auto stmt : ast.getThenStmts()) {
-      printer.ln();
+      printer->ln();
       stmt->accept(*this);
     }
   }
-  printer.ln() << "}";
+  printer->ln() << "}";
   if (ast.hasElse()) {
-    printer << " else {";
+    *printer << " else {";
     {
-      ASTPrinter::AddIndentScope scope(printer);
+      ASTPrinter::AddIndentScope scope(*printer);
       for (auto stmt : ast.getElseStmts()) {
-        printer.ln();
+        printer->ln();
         stmt->accept(*this);
       }
     }
-    printer.ln() << "}";
+    printer->ln() << "}";
   }
 }
 
@@ -333,29 +345,29 @@ WhileStatement *WhileStatement::create(SMRange range, ASTContext *context,
 
 void ASTPrintVisitor::visit(const WhileStatement &ast) {
   if (ast.isDoWhile()) {
-    printer << "do {";
+    *printer << "do {";
     {
-      ASTPrinter::AddIndentScope scope(printer);
+      ASTPrinter::AddIndentScope scope(*printer);
       for (auto stmt : ast.getBody()) {
-        printer.ln();
+        printer->ln();
         stmt->accept(*this);
       }
     }
-    printer.ln() << "} while ";
+    printer->ln() << "} while ";
     ast.getCond()->accept(*this);
-    printer << ";";
+    *printer << ";";
   } else {
-    printer << "while ";
+    *printer << "while ";
     ast.getCond()->accept(*this);
-    printer << "{";
+    *printer << "{";
     {
-      ASTPrinter::AddIndentScope scope(printer);
+      ASTPrinter::AddIndentScope scope(*printer);
       for (auto stmt : ast.getBody()) {
-        printer.ln();
+        printer->ln();
         stmt->accept(*this);
       }
     }
-    printer.ln() << "}";
+    printer->ln() << "}";
   }
 }
 
@@ -427,22 +439,22 @@ ArrayRef<Statement *> ForStatement::getBody() const {
 }
 
 void ASTPrintVisitor::visit(const ForStatement &ast) {
-  printer << "for (";
+  *printer << "for (";
   if (ast.getDecl()) {
     auto *decl = ast.getDecl().value();
-    printer << "var ";
+    *printer << "var ";
     decl->getPattern()->accept(*this);
     if (decl->getInit()) {
-      printer << " = ";
+      *printer << " = ";
       decl->getInit().value()->accept(*this);
     }
   }
-  printer << "; ";
+  *printer << "; ";
 
   if (ast.getCond()) {
     ast.getCond().value()->accept(*this);
   }
-  printer << "; ";
+  *printer << "; ";
 
   if (ast.getStep()) {
     auto *step = *ast.getStep();
@@ -450,28 +462,28 @@ void ASTPrintVisitor::visit(const ForStatement &ast) {
                       CompoundStatement>()));
     if (auto *opAssign = step->dyn_cast<OperatorAssignmentStatement>()) {
       opAssign->getLhs()->accept(*this);
-      printer << " ";
-      printOperator(printer.getOS(), opAssign->getOperator());
-      printer << "= ";
+      *printer << " ";
+      printOperator(printer->getOS(), opAssign->getOperator());
+      *printer << "= ";
       opAssign->getRhs()->accept(*this);
     } else if (auto *assign = step->dyn_cast<AssignmentStatement>()) {
       assign->getLhs()->accept(*this);
-      printer << " = ";
+      *printer << " = ";
       assign->getRhs()->accept(*this);
     } else {
       step->accept(*this);
     }
   }
 
-  printer << ") {";
+  *printer << ") {";
   {
-    ASTPrinter::AddIndentScope scope(printer);
+    ASTPrinter::AddIndentScope scope(*printer);
     for (auto stmt : ast.getBody()) {
-      printer.ln();
+      printer->ln();
       stmt->accept(*this);
     }
   }
-  printer.ln() << "}";
+  printer->ln() << "}";
 }
 
 void ASTEqualVisitor::visit(const ForStatement &other) {
@@ -507,7 +519,7 @@ BreakStatement *BreakStatement::create(SMRange range, ASTContext *context) {
   return context->make<BreakStatement>(range);
 }
 
-void ASTPrintVisitor::visit(const BreakStatement &ast) { printer << "break;"; }
+void ASTPrintVisitor::visit(const BreakStatement &ast) { *printer << "break;"; }
 
 void ASTEqualVisitor::visit(const BreakStatement &other) {
   equal = thisAST->isa<BreakStatement>();
@@ -523,7 +535,7 @@ ContinueStatement *ContinueStatement::create(SMRange range,
 }
 
 void ASTPrintVisitor::visit(const ContinueStatement &ast) {
-  printer << "continue;";
+  *printer << "continue;";
 }
 
 void ASTEqualVisitor::visit(const ContinueStatement &other) {
@@ -540,12 +552,12 @@ ReturnStatement *ReturnStatement::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const ReturnStatement &ast) {
-  printer << "return";
+  *printer << "return";
   if (ast.getExpr()) {
-    printer << " ";
+    *printer << " ";
     ast.getExpr().value()->accept(*this);
   }
-  printer << ";";
+  *printer << ";";
 }
 
 void ASTEqualVisitor::visit(const ReturnStatement &other) {
@@ -569,13 +581,13 @@ DeclarationStatement::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const DeclarationStatement &ast) {
-  printer << "var ";
+  *printer << "var ";
   ast.getPattern()->accept(*this);
   if (ast.getInit()) {
-    printer << " = ";
+    *printer << " = ";
     ast.getInit().value()->accept(*this);
   }
-  printer << ";";
+  *printer << ";";
 }
 
 void ASTEqualVisitor::visit(const DeclarationStatement &other) {
@@ -606,9 +618,9 @@ AssignmentStatement *AssignmentStatement::create(SMRange range,
 
 void ASTPrintVisitor::visit(const AssignmentStatement &ast) {
   ast.getLhs()->accept(*this);
-  printer << " = ";
+  *printer << " = ";
   ast.getRhs()->accept(*this);
-  printer << ";";
+  *printer << ";";
 }
 
 void ASTEqualVisitor::visit(const AssignmentStatement &other) {
@@ -642,11 +654,11 @@ OperatorAssignmentStatement::create(SMRange range, ASTContext *context,
 
 void ASTPrintVisitor::visit(const OperatorAssignmentStatement &ast) {
   ast.getLhs()->accept(*this);
-  printer << " ";
-  printOperator(printer.getOS(), ast.getOperator());
-  printer << "= ";
+  *printer << " ";
+  printOperator(printer->getOS(), ast.getOperator());
+  *printer << "= ";
   ast.getRhs()->accept(*this);
-  printer << ";";
+  *printer << ";";
 }
 
 void ASTEqualVisitor::visit(const OperatorAssignmentStatement &other) {
@@ -695,21 +707,21 @@ FunctionDeclaration *FunctionDeclaration::create(SMRange range,
 }
 
 void ASTPrintVisitor::visit(const FunctionDeclaration &ast) {
-  printer << "fn " << ast.getName() << "(";
+  *printer << "fn " << ast.getName() << "(";
   for (auto [idx, param] : llvm::enumerate(ast.getParams())) {
     param->accept(*this);
     if (idx != ast.getParams().size() - 1)
-      printer << ", ";
+      *printer << ", ";
   }
-  printer << ") {";
+  *printer << ") {";
   {
-    ASTPrinter::AddIndentScope scope(printer);
+    ASTPrinter::AddIndentScope scope(*printer);
     for (auto stmt : ast.getBody()) {
-      printer.ln();
+      printer->ln();
       stmt->accept(*this);
     }
   }
-  printer.ln() << "}";
+  printer->ln() << "}";
 }
 
 void ASTEqualVisitor::visit(const FunctionDeclaration &other) {
@@ -750,20 +762,20 @@ MatchExpression *MatchExpression::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const MatchExpression &ast) {
-  printer << "match ";
+  *printer << "match ";
   ast.getExpr()->accept(*this);
-  printer << " {";
+  *printer << " {";
   {
-    ASTPrinter::AddIndentScope scope(printer);
+    ASTPrinter::AddIndentScope scope(*printer);
     for (auto [idx, matchCase] : llvm::enumerate(ast.getMatchCases())) {
-      printer.ln() << '\\';
+      printer->ln() << '\\';
       matchCase.first->accept(*this);
-      printer << " => ";
+      *printer << " => ";
       matchCase.second->accept(*this);
-      printer << ';';
+      *printer << ';';
     }
   }
-  printer.ln() << "}";
+  printer->ln() << "}";
 }
 
 void ASTEqualVisitor::visit(const MatchExpression &other) {
@@ -838,25 +850,25 @@ ArrayRef<Statement *> LambdaExpression::getStmtBody() const {
 }
 
 void ASTPrintVisitor::visit(const LambdaExpression &ast) {
-  printer << "\\";
+  *printer << "\\";
   for (auto [idx, param] : llvm::enumerate(ast.getParams())) {
     param->accept(*this);
     if (idx != ast.getParams().size() - 1)
-      printer << ", ";
+      *printer << ", ";
   }
-  printer << " => ";
+  *printer << " => ";
   if (ast.isExprBody()) {
     ast.getExpr()->accept(*this);
   } else {
-    printer << "{";
+    *printer << "{";
     {
-      ASTPrinter::AddIndentScope scope(printer);
+      ASTPrinter::AddIndentScope scope(*printer);
       for (auto stmt : ast.getStmtBody()) {
-        printer.ln();
+        printer->ln();
         stmt->accept(*this);
       }
     }
-    printer.ln() << "}";
+    printer->ln() << "}";
   }
 }
 
@@ -900,9 +912,9 @@ BinaryExpression *BinaryExpression::create(SMRange range, ASTContext *context,
 
 void ASTPrintVisitor::visit(const BinaryExpression &ast) {
   ast.getLhs()->accept(*this);
-  printer << " ";
-  printOperator(printer.getOS(), ast.getOperator());
-  printer << " ";
+  *printer << " ";
+  printOperator(printer->getOS(), ast.getOperator());
+  *printer << " ";
   ast.getRhs()->accept(*this);
 }
 
@@ -939,7 +951,7 @@ UnaryExpression *UnaryExpression::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const UnaryExpression &ast) {
-  printOperator(printer.getOS(), ast.getOperator());
+  printOperator(printer->getOS(), ast.getOperator());
   ast.getExpr()->accept(*this);
 }
 
@@ -980,13 +992,13 @@ CallExpression *CallExpression::create(SMRange range, ASTContext *context,
 
 void ASTPrintVisitor::visit(const CallExpression &ast) {
   ast.getCallee()->accept(*this);
-  printer << "(";
+  *printer << "(";
   for (auto [idx, arg] : llvm::enumerate(ast.getArgs())) {
     arg->accept(*this);
     if (idx != ast.getArgs().size() - 1)
-      printer << ", ";
+      *printer << ", ";
   }
-  printer << ")";
+  *printer << ")";
 }
 
 void ASTEqualVisitor::visit(const CallExpression &other) {
@@ -1019,13 +1031,13 @@ ArrayExpression *ArrayExpression::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const ArrayExpression &ast) {
-  printer << "[";
+  *printer << "[";
   for (auto [idx, elem] : llvm::enumerate(ast.getArgs())) {
     elem->accept(*this);
     if (idx != ast.getArgs().size() - 1)
-      printer << ", ";
+      *printer << ", ";
   }
-  printer << "]";
+  *printer << "]";
 }
 
 void ASTEqualVisitor::visit(const ArrayExpression &other) {
@@ -1049,9 +1061,9 @@ IndexExpression *IndexExpression::create(SMRange range, ASTContext *context,
 
 void ASTPrintVisitor::visit(const IndexExpression &ast) {
   ast.getLhs()->accept(*this);
-  printer << "[";
+  *printer << "[";
   ast.getRhs()->accept(*this);
-  printer << "]";
+  *printer << "]";
 }
 
 void ASTEqualVisitor::visit(const IndexExpression &other) {
@@ -1083,7 +1095,7 @@ IdentifierExpression *IdentifierExpression::create(SMRange range,
 }
 
 void ASTPrintVisitor::visit(const IdentifierExpression &ast) {
-  printer << ast.getName();
+  *printer << ast.getName();
 }
 
 void ASTEqualVisitor::visit(const IdentifierExpression &other) {
@@ -1111,15 +1123,15 @@ TupleExpression *TupleExpression::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const TupleExpression &ast) {
-  printer << "(";
+  *printer << "(";
   for (auto [idx, elem] : llvm::enumerate(ast.getExprs())) {
     elem->accept(*this);
     if (idx != ast.getExprs().size() - 1)
-      printer << ", ";
+      *printer << ", ";
   }
   if (ast.getExprs().size() == 1)
-    printer << ",";
-  printer << ")";
+    *printer << ",";
+  *printer << ")";
 }
 
 void ASTEqualVisitor::visit(const TupleExpression &other) {
@@ -1142,9 +1154,9 @@ GroupExpression *GroupExpression::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const GroupExpression &ast) {
-  printer << "(";
+  *printer << "(";
   ast.getExpr()->accept(*this);
-  printer << ")";
+  *printer << ")";
 }
 
 void ASTEqualVisitor::visit(const GroupExpression &other) {
@@ -1167,7 +1179,7 @@ IntegerLiteral *IntegerLiteral::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const IntegerLiteral &ast) {
-  printer << ast.getValue();
+  *printer << ast.getValue();
 }
 
 void ASTEqualVisitor::visit(const IntegerLiteral &other) {
@@ -1190,7 +1202,7 @@ BooleanLiteral *BooleanLiteral::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const BooleanLiteral &ast) {
-  printer << (ast.getValue() ? "true" : "false");
+  *printer << (ast.getValue() ? "true" : "false");
 }
 
 void ASTEqualVisitor::visit(const BooleanLiteral &other) {
@@ -1213,7 +1225,7 @@ FloatLiteral *FloatLiteral::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const FloatLiteral &ast) {
-  printer << ast.getValue();
+  *printer << ast.getValue();
 }
 
 void ASTEqualVisitor::visit(const FloatLiteral &other) {
@@ -1236,7 +1248,7 @@ StringLiteral *StringLiteral::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const StringLiteral &ast) {
-  printer << ast.getValue();
+  *printer << ast.getValue();
 }
 
 void ASTEqualVisitor::visit(const StringLiteral &other) {
@@ -1257,7 +1269,7 @@ NilLiteral *NilLiteral::create(SMRange range, ASTContext *context) {
   return context->make<NilLiteral>(range);
 }
 
-void ASTPrintVisitor::visit(const NilLiteral &ast) { printer << "nil"; }
+void ASTPrintVisitor::visit(const NilLiteral &ast) { *printer << "nil"; }
 
 void ASTEqualVisitor::visit(const NilLiteral &other) {
   equal = thisAST->isa<NilLiteral>();
@@ -1273,7 +1285,7 @@ IdentifierPattern *IdentifierPattern::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const IdentifierPattern &ast) {
-  printer << ast.getName();
+  *printer << ast.getName();
 }
 
 void ASTEqualVisitor::visit(const IdentifierPattern &other) {
@@ -1301,15 +1313,15 @@ TuplePattern *TuplePattern::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const TuplePattern &ast) {
-  printer << "(";
+  *printer << "(";
   for (auto [idx, elem] : llvm::enumerate(ast.getPatterns())) {
     elem->accept(*this);
     if (idx != ast.getPatterns().size() - 1)
-      printer << ", ";
+      *printer << ", ";
   }
   if (ast.getPatterns().size() == 1)
-    printer << ",";
-  printer << ")";
+    *printer << ",";
+  *printer << ")";
 }
 
 void ASTEqualVisitor::visit(const TuplePattern &other) {
@@ -1333,9 +1345,9 @@ GroupPattern *GroupPattern::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const GroupPattern &ast) {
-  printer << "(";
+  *printer << "(";
   ast.getPattern()->accept(*this);
-  printer << ")";
+  *printer << ")";
 }
 
 void ASTEqualVisitor::visit(const GroupPattern &other) {
@@ -1358,7 +1370,7 @@ IntegerPattern *IntegerPattern::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const IntegerPattern &ast) {
-  printer << ast.getValue();
+  *printer << ast.getValue();
 }
 
 void ASTEqualVisitor::visit(const IntegerPattern &other) {
@@ -1381,7 +1393,7 @@ FloatPattern *FloatPattern::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const FloatPattern &ast) {
-  printer << ast.getValue();
+  *printer << ast.getValue();
 }
 
 void ASTEqualVisitor::visit(const FloatPattern &other) {
@@ -1404,7 +1416,7 @@ StringPattern *StringPattern::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const StringPattern &ast) {
-  printer << ast.getValue();
+  *printer << ast.getValue();
 }
 
 void ASTEqualVisitor::visit(const StringPattern &other) {
@@ -1427,7 +1439,7 @@ BooleanPattern *BooleanPattern::create(SMRange range, ASTContext *context,
 }
 
 void ASTPrintVisitor::visit(const BooleanPattern &ast) {
-  printer << (ast.getValue() ? "true" : "false");
+  *printer << (ast.getValue() ? "true" : "false");
 }
 
 void ASTEqualVisitor::visit(const BooleanPattern &other) {
@@ -1448,7 +1460,7 @@ EmptyPattern *EmptyPattern::create(SMRange range, ASTContext *context) {
   return context->make<EmptyPattern>(range);
 }
 
-void ASTPrintVisitor::visit(const EmptyPattern &ast) { printer << "_"; }
+void ASTPrintVisitor::visit(const EmptyPattern &ast) { *printer << "_"; }
 
 void ASTEqualVisitor::visit(const EmptyPattern &other) {
   equal = thisAST->isa<EmptyPattern>();
@@ -1462,7 +1474,7 @@ NilPattern *NilPattern::create(SMRange range, ASTContext *context) {
   return context->make<NilPattern>(range);
 }
 
-void ASTPrintVisitor::visit(const NilPattern &ast) { printer << "nil"; }
+void ASTPrintVisitor::visit(const NilPattern &ast) { *printer << "nil"; }
 
 void ASTEqualVisitor::visit(const NilPattern &other) {
   equal = thisAST->isa<NilPattern>();
