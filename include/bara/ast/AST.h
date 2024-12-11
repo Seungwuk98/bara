@@ -158,6 +158,9 @@ enum class Operator {
   Shr,    // >>
 };
 
+void printOperator(raw_ostream &os, Operator op);
+string operatorToString(Operator op);
+
 /// Program ::= Statement*
 class Program final : public ASTBase<Program, AST>,
                       public TrailingObjects<Program, Statement *> {

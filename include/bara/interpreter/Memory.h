@@ -3,22 +3,73 @@
 
 #include "bara/context/MemoryContext.h"
 #include "bara/utils/LLVM.h"
+#include "bara/utils/VisitorBase.h"
 #include <memory>
 
 namespace bara {
 class Value;
+class Memory;
 
 using std::unique_ptr;
 
 enum class MemoryKind {
-  Value,
-  Tuple,
-  Vector,
+#define MEMORY(Name) Name,
+#include "bara/interpreter/Memory.def"
+  NUM,
 };
+
+#define MEMORY(Name) class Name##Memory;
+#include "bara/interpreter/Memory.def"
+
+namespace _inner {
+template <typename T>
+struct MemoryKindMapper {};
+
+#define MEMORY(Name)                                                           \
+  template <>                                                                  \
+  struct MemoryKindMapper<Name##Memory> {                                      \
+    static const MemoryKind value = MemoryKind::Name;                          \
+  };
+#include "bara/interpreter/Memory.def"
+
+} // namespace _inner
+
+using MemoryVisitor = utils::Visitor<Memory>;
+template <typename ConcreteType>
+using MemoryVisitorBase =
+    utils::VisitorBase<ConcreteType, Memory, false, _inner::MemoryKindMapper
+#define MEMORY(Name) , Name##Memory
+#include "bara/interpreter/Memory.def"
+                       >;
 
 class Memory {
 public:
+  using KindTy = MemoryKind;
+
+  template <typename... U>
+  bool isa() const {
+    return llvm::isa<U...>(this);
+  }
+  template <typename U>
+  const U *cast() const {
+    return llvm::cast<U>(this);
+  }
+  template <typename U>
+  U *cast() {
+    return llvm::cast<U>(this);
+  }
+  template <typename U>
+  const U *dyn_cast() const {
+    return llvm::dyn_cast<U>(this);
+  }
+  template <typename U>
+  U *dyn_cast() {
+    return llvm::dyn_cast<U>(this);
+  }
+
   MemoryKind getKind() const { return kind; }
+
+  bool assign(Value *value);
 
 protected:
   Memory(MemoryKind kind) : kind(kind) {}
@@ -31,13 +82,14 @@ class ValueMemory final : public Memory {
   ValueMemory(unique_ptr<Value> value)
       : Memory(MemoryKind::Value), value(std::move(value)) {}
 
+public:
+  ~ValueMemory();
+
   static bool classof(const Memory *mem) {
     return mem->getKind() == MemoryKind::Value;
   }
 
-public:
   Value *view() const { return value.get(); }
-  unique_ptr<Value> load() { return std::move(value); }
   void assign(unique_ptr<Value> value) { this->value = std::move(value); }
 
   static ValueMemory *create(MemoryContext *context, unique_ptr<Value> value);
@@ -48,6 +100,8 @@ private:
 
 class TupleMemory final : public Memory,
                           public TrailingObjects<TupleMemory, Memory *> {
+  TupleMemory(size_t size) : Memory(MemoryKind::Tuple), size(size) {}
+
 public:
   static TupleMemory *create(MemoryContext *context, ArrayRef<Memory *> mems);
 
@@ -55,11 +109,17 @@ public:
     return mem->getKind() == MemoryKind::Tuple;
   }
 
+  ArrayRef<Memory *> getMemories() const {
+    return {getTrailingObjects<Memory *>(), size};
+  }
+
 private:
   size_t size;
 };
 
 class VectorMemory final : public Memory {
+  VectorMemory(ArrayRef<ValueMemory *> mems)
+      : Memory(MemoryKind::Vector), mems(mems) {}
 
 public:
   static VectorMemory *create(MemoryContext *context,

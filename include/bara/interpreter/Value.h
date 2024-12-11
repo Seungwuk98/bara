@@ -43,6 +43,8 @@ using ConstValueVisitorBase =
 
 class Value {
 public:
+  virtual ~Value() = default;
+
   using KindTy = ValueKind;
 
   template <typename... U>
@@ -153,8 +155,10 @@ public:
   static unique_ptr<ListValue>
   create(MemoryContext *context, MutableArrayRef<unique_ptr<Value>> values);
 
+  static unique_ptr<ListValue> create(VectorMemory *memory);
+
   VectorMemory *getVectorMemory() const { return memory; }
-  Memory *getElement(size_t index) { return memory->get(index); }
+  Memory *getElement(size_t index) const { return memory->get(index); }
   size_t size() const { return memory->size(); }
   bool empty() const { return memory->empty(); }
 
@@ -194,7 +198,7 @@ public:
 };
 
 class FunctionValue final : public Value {
-  FunctionValue(const Environment &env, FunctionDeclaration *decl)
+  FunctionValue(const Environment &env, const FunctionDeclaration *decl)
       : Value(ValueKind::Function), env(env), decl(decl) {}
 
 public:
@@ -203,14 +207,14 @@ public:
   }
 
   static unique_ptr<FunctionValue> create(const Environment &env,
-                                          FunctionDeclaration *decl);
+                                          const FunctionDeclaration *decl);
 
-  Environment &getEnvironment() { return env; }
-  FunctionDeclaration *getDeclaration() const { return decl; }
+  const Environment &getEnvironment() const { return env; }
+  const FunctionDeclaration *getDeclaration() const { return decl; }
 
 private:
   Environment env;
-  FunctionDeclaration *decl;
+  const FunctionDeclaration *decl;
 };
 
 class LambdaValue final : public Value {
@@ -225,7 +229,7 @@ public:
   static unique_ptr<LambdaValue> create(const Environment &env,
                                         LambdaExpression *expr);
 
-  Environment &getEnvironment() { return env; }
+  const Environment &getEnvironment() const { return env; }
   LambdaExpression *getExpression() const { return expr; }
 
 private:

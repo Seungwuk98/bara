@@ -1,4 +1,0 @@
-#ifndef BARA_INTERPRETER_H
-#define BARA_INTERPRETER_H
-
-#endif // BARA_INTERPRETER_H

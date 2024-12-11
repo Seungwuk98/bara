@@ -1,0 +1,21 @@
+#ifndef EXPRESSION
+#define EXPRESSION(NAME)
+#endif
+
+EXPRESSION(MatchExpression)
+EXPRESSION(LambdaExpression)
+EXPRESSION(BinaryExpression)
+EXPRESSION(UnaryExpression)
+EXPRESSION(CallExpression)
+EXPRESSION(ArrayExpression)
+EXPRESSION(IndexExpression)
+EXPRESSION(IdentifierExpression)
+EXPRESSION(TupleExpression)
+EXPRESSION(GroupExpression)
+EXPRESSION(IntegerLiteral)
+EXPRESSION(BooleanLiteral)
+EXPRESSION(FloatLiteral)
+EXPRESSION(StringLiteral)
+EXPRESSION(NilLiteral)
+
+#undef EXPRESSION

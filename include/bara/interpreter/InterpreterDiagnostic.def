@@ -1,0 +1,26 @@
+#ifndef DIAG
+#define DIAG(Name, Msg, Error)
+#endif
+
+DIAG(error_invalid_to_conver_boolean, "Can't convert to boolean value({0})",
+     Error)
+DIAG(error_redefinition_in_scope,
+     "Variable '{0}' already declared in this scope", Error)
+DIAG(error_match_pattern_fail, "Pattern match failed. pattern({0}), value({1})",
+     Error)
+DIAG(error_unresolved_return_statement, "Unresolved return statement", Error)
+DIAG(error_unresolved_break_statement, "Unresolved break statement", Error)
+DIAG(error_unresolved_continue_statement, "Unresolved continue statement",
+     Error)
+DIAG(error_assignment_fail, "Assignment value({0}) fail", Error)
+DIAG(error_invalid_left_size_of_operator_assignment,
+     "Left side of operator({0}) assignemnt is invalid.", Error)
+DIAG(error_unknown_identifier, "Unknown identifier '{0}'", Error)
+DIAG(error_invalid_type_to_access, "Given value({0}) is not accessible", Error)
+DIAG(error_invalid_type_for_access,
+     "Index expression requires integer type for access. got({0})", Error)
+DIAG(error_out_of_range, "Index out of range. index({0}), size({1})", Error)
+DIAG(error_invalid_expression_for_assignment,
+     "Invalid expression for assignment. got '{0}'", Error)
+
+#undef DIAG

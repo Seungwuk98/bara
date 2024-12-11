@@ -23,7 +23,7 @@ private:
 
 llvm::ManagedStatic<ASTPrintVisitor> printVisitor;
 
-static void printOperator(raw_ostream &os, Operator op) {
+void printOperator(raw_ostream &os, Operator op) {
   switch (op) {
   case Operator::Plus:
     os << '+';
@@ -89,6 +89,13 @@ static void printOperator(raw_ostream &os, Operator op) {
     os << ">>";
     break;
   }
+}
+
+string operatorToString(Operator op) {
+  string str;
+  raw_string_ostream os(str);
+  printOperator(os, op);
+  return os.str();
 }
 
 class ASTEqualVisitor : public ConstASTVisitorBase<ASTEqualVisitor

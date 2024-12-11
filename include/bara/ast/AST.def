@@ -2,42 +2,13 @@
 #define AST_KIND(NAME)
 #endif
 
-AST_KIND(Program)
-AST_KIND(CompoundStatement)
-AST_KIND(ExpressionStatement)
-AST_KIND(IfStatement)
-AST_KIND(WhileStatement)
-AST_KIND(ForStatement)
-AST_KIND(BreakStatement)
-AST_KIND(ContinueStatement)
-AST_KIND(ReturnStatement)
-AST_KIND(DeclarationStatement)
-AST_KIND(AssignmentStatement)
-AST_KIND(OperatorAssignmentStatement)
-AST_KIND(FunctionDeclaration)
-AST_KIND(MatchExpression)
-AST_KIND(LambdaExpression)
-AST_KIND(BinaryExpression)
-AST_KIND(UnaryExpression)
-AST_KIND(CallExpression)
-AST_KIND(ArrayExpression)
-AST_KIND(IndexExpression)
-AST_KIND(IdentifierExpression)
-AST_KIND(TupleExpression)
-AST_KIND(GroupExpression)
-AST_KIND(IntegerLiteral)
-AST_KIND(BooleanLiteral)
-AST_KIND(FloatLiteral)
-AST_KIND(StringLiteral)
-AST_KIND(NilLiteral)
-AST_KIND(IdentifierPattern)
-AST_KIND(TuplePattern)
-AST_KIND(GroupPattern)
-AST_KIND(IntegerPattern)
-AST_KIND(StringPattern)
-AST_KIND(BooleanPattern)
-AST_KIND(FloatPattern)
-AST_KIND(EmptyPattern)
-AST_KIND(NilPattern)
+#define STATEMENT(NAME) AST_KIND(NAME)
+#include "bara/ast/Statement.def"
+
+#define EXPRESSION(NAME) AST_KIND(NAME)
+#include "bara/ast/Expression.def"
+
+#define PATTERN(NAME) AST_KIND(NAME)
+#include "bara/ast/Pattern.def"
 
 #undef AST_KIND

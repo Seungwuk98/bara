@@ -6,9 +6,20 @@
 namespace bara {
 class MemoryContext {
 public:
-  void *alloc(size_t size);
+  ~MemoryContext();
+
+  template <typename DestructTy>
+  void *alloc(size_t size) {
+    void *ptr = malloc(size);
+    allocations.emplace_back(ptr, [](void *ptr) {
+      static_cast<DestructTy *>(ptr)->~DestructTy();
+      free(ptr);
+    });
+    return ptr;
+  }
 
 private:
+  vector<pair<void *, function<void(void *)>>> allocations;
 };
 } // namespace bara
 

@@ -1,0 +1,9 @@
+#ifndef MEMORY
+#define MEMORY(Name)
+#endif
+
+MEMORY(Value)
+MEMORY(Tuple)
+MEMORY(Vector)
+
+#undef MEMORY

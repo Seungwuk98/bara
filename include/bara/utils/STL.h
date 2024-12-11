@@ -8,8 +8,10 @@ namespace bara {
 using std::array;
 using std::nullopt;
 using std::optional;
+using std::pair;
 using std::size_t;
 using std::string;
+using std::tuple;
 using std::vector;
 
 using std::function;

@@ -1,0 +1,19 @@
+#ifndef STATEMENT
+#define STATEMENT(NAME)
+#endif
+
+STATEMENT(Program)
+STATEMENT(CompoundStatement)
+STATEMENT(ExpressionStatement)
+STATEMENT(IfStatement)
+STATEMENT(WhileStatement)
+STATEMENT(ForStatement)
+STATEMENT(BreakStatement)
+STATEMENT(ContinueStatement)
+STATEMENT(ReturnStatement)
+STATEMENT(DeclarationStatement)
+STATEMENT(AssignmentStatement)
+STATEMENT(OperatorAssignmentStatement)
+STATEMENT(FunctionDeclaration)
+
+#undef STATEMENT

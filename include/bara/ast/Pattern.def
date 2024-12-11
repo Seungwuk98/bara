@@ -1,0 +1,15 @@
+#ifndef PATTERN
+#define PATTERN(NAME)
+#endif
+
+PATTERN(IdentifierPattern)
+PATTERN(TuplePattern)
+PATTERN(GroupPattern)
+PATTERN(IntegerPattern)
+PATTERN(StringPattern)
+PATTERN(BooleanPattern)
+PATTERN(FloatPattern)
+PATTERN(EmptyPattern)
+PATTERN(NilPattern)
+
+#undef PATTERN
