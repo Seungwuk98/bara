@@ -16,8 +16,9 @@ class CommonExprInterpreter {
 public:
   using InterpretDiagnostic = StmtInterpreter::InterpretDiagnostic;
 
-  CommonExprInterpreter(Diagnostic &diag, StmtInterpreter *stmtInterpreter)
-      : diag(diag), stmtInterpreter(stmtInterpreter) {}
+  CommonExprInterpreter(StmtInterpreter *stmtInterpreter)
+      : diag(stmtInterpreter->diag), context(stmtInterpreter->context),
+        stmtInterpreter(stmtInterpreter) {}
 
   Memory *interpretIdentifier(const IdentifierExpression *expr);
   Memory *interpretIndex(const IndexExpression *expr);
@@ -26,6 +27,7 @@ public:
 
 protected:
   Diagnostic &diag;
+  MemoryContext *context;
   StmtInterpreter *stmtInterpreter;
 };
 
@@ -37,7 +39,7 @@ class RvExprInterpreter : public CommonExprInterpreter<RvExprInterpreter>,
 
 public:
   RvExprInterpreter(StmtInterpreter *stmtInterpreter)
-      : CommonExprInterpreter(stmtInterpreter->diag, stmtInterpreter) {}
+      : CommonExprInterpreter(stmtInterpreter) {}
 
 #define EXPRESSION(Name) void visit(const Name &expr);
 #include "bara/ast/Expression.def"
@@ -59,7 +61,7 @@ class LvExprInterpreter : public CommonExprInterpreter<LvExprInterpreter>,
                                                      > {
 public:
   LvExprInterpreter(StmtInterpreter *stmtInterpreter)
-      : CommonExprInterpreter(stmtInterpreter->diag, stmtInterpreter) {}
+      : CommonExprInterpreter(stmtInterpreter) {}
 
 #define EXPRESSION(Name) void visit(const Name &expr);
 #include "bara/ast/Expression.def"

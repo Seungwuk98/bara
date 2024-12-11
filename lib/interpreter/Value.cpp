@@ -130,6 +130,11 @@ unique_ptr<FloatValue> FloatValue::create(StringRef value) {
   return unique_ptr<FloatValue>(mem);
 }
 
+unique_ptr<FloatValue> FloatValue::create(const APFloat &value) {
+  auto *mem = new FloatValue(value);
+  return unique_ptr<FloatValue>(mem);
+}
+
 void ValuePrintVisitor::visit(const FloatValue &value) {
   SmallVector<char> buffer;
   value.getValue().toString(buffer);

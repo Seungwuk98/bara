@@ -116,6 +116,7 @@ private:
 class FloatValue final : public Value {
   FloatValue(StringRef value)
       : Value(ValueKind::Float), value(APFloat::IEEEdouble(), value) {}
+  FloatValue(const APFloat &value) : Value(ValueKind::Float), value(value) {}
 
 public:
   static bool classof(const Value *value) {
@@ -123,6 +124,7 @@ public:
   }
 
   static unique_ptr<FloatValue> create(StringRef value);
+  static unique_ptr<FloatValue> create(const APFloat &value);
   const APFloat &getValue() const { return value; }
 
 private:
