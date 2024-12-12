@@ -1,7 +1,7 @@
 add_library(
   BaraInterpreter
   STATIC
-  Interpreter.cpp 
+  StmtInterpreter.cpp 
   Memory.cpp
   Value.cpp
   RvInterpreter.cpp

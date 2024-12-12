@@ -115,7 +115,7 @@ Memory *CommonExprInterpreter<ConcreteType>::interpretIndex(
 
   int64_t indexValue = index->cast<IntegerValue>()->getValue();
   return llvm::TypeSwitch<Value *, Memory *>(value.get())
-      .Case([&](const ListValue *list) {
+      .Case([&](const ListValue *list) -> Memory * {
         if (indexValue < 0 || indexValue >= list->size()) {
           stmtInterpreter->report(expr->getRange(),
                                   InterpretDiagnostic::error_out_of_range,
@@ -124,7 +124,7 @@ Memory *CommonExprInterpreter<ConcreteType>::interpretIndex(
         }
         return list->getElement(indexValue);
       })
-      .Default([&](const Value *tuple) {
+      .Default([&](const Value *tuple) -> Memory * {
         auto tupleValue = tuple->cast<TupleValue>();
         if (indexValue < 0 || indexValue >= tupleValue->size()) {
           stmtInterpreter->report(expr->getRange(),

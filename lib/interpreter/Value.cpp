@@ -305,4 +305,27 @@ void CloneVisitor::visit(const LambdaValue &value) {
   result = LambdaValue::create(value.getEnvironment(), value.getExpression());
 }
 
+//===----------------------------------------------------------------------===//
+/// BuiltinFunctionValue
+//===----------------------------------------------------------------------===//
+
+unique_ptr<BuiltinFunctionValue> BuiltinFunctionValue::create(StringRef name,
+                                                              StringRef helpMsg,
+                                                              funcBodyType fn) {
+  auto *mem = new BuiltinFunctionValue(name, helpMsg, fn);
+  return unique_ptr<BuiltinFunctionValue>(mem);
+}
+
+void ValuePrintVisitor::visit(const BuiltinFunctionValue &value) {
+  *printer << "<builtin function" << '\'' << value.getName() << "'>";
+}
+
+void ToBoolVisitor::visit(const BuiltinFunctionValue &value) {
+  result = nullopt;
+}
+
+void CloneVisitor::visit(const BuiltinFunctionValue &value) {
+  result = BuiltinFunctionValue::create(value.getName(), value.getHelp(),
+                                        value.getFuncBody());
+}
 } // namespace bara

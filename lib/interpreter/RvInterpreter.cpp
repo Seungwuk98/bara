@@ -1,5 +1,7 @@
 #include "bara/ast/AST.h"
 #include "bara/interpreter/ExprInterpreter.h"
+#include "bara/interpreter/Memory.h"
+#include "bara/interpreter/StmtInterpreter.h"
 #include "bara/interpreter/Value.h"
 #include <limits>
 
@@ -121,7 +123,138 @@ void RvExprInterpreter::visit(const UnaryExpression &expr) {
 }
 
 void RvExprInterpreter::visit(const CallExpression &expr) {
-  llvm_unreachable("TODO");
+  expr.getCallee()->accept(*this);
+  if (diag.hasError())
+    return;
+  auto callee = std::move(result);
+  if (!callee->isa<FunctionValue, LambdaValue, BuiltinFunctionValue>()) {
+    stmtInterpreter->report(expr.getRange(),
+                            InterpretDiagnostic::error_invalid_callee,
+                            callee->toString());
+    return;
+  }
+
+  SmallVector<unique_ptr<Value>> args;
+  args.reserve(expr.getArgs().size());
+  for (auto *argExpr : expr.getArgs()) {
+    argExpr->accept(*this);
+    if (diag.hasError())
+      return;
+    args.emplace_back(std::move(result));
+  }
+
+  llvm::TypeSwitch<Value *, void>(callee.get())
+      // User defined function
+      .Case([&](FunctionValue *functionV) {
+        StmtInterpreter::ReplaceEnvScope replace(*stmtInterpreter,
+                                                 functionV->getEnvironment());
+        Environment::Scope scope(getEnv());
+
+        auto *funcDecl = functionV->getDeclaration();
+
+        /// for recursive call
+        getEnv().insert(funcDecl->getName(),
+                        ImmutableMemory::create(context, functionV->clone()));
+        auto params = funcDecl->getParams();
+
+        if (params.size() != args.size()) {
+          stmtInterpreter->report(
+              expr.getRange(), InterpretDiagnostic::error_invalid_argument_size,
+              params.size(), args.size());
+          stmtInterpreter->report(funcDecl->getRange(),
+                                  InterpretDiagnostic::note_function);
+          return;
+        }
+
+        for (const auto &[pattern, value] : llvm::zip(params, args)) {
+          if (!stmtInterpreter->matchPattern(*pattern, value.get())) {
+            stmtInterpreter->report(
+                expr.getRange(), InterpretDiagnostic::error_match_pattern_fail,
+                pattern->toString(), value->toString());
+            return;
+          }
+        }
+
+        Environment::Scope bodyScope(getEnv());
+
+        for (auto *body : funcDecl->getBody()) {
+          body->accept(*stmtInterpreter);
+          if (stmtInterpreter->isTerminated())
+            break;
+        }
+
+        if (stmtInterpreter->continueFlag) {
+          stmtInterpreter->report(
+              stmtInterpreter->continueFlag->getRange(),
+              InterpretDiagnostic::error_unresolved_continue_statement);
+        } else if (stmtInterpreter->breakFlag) {
+          stmtInterpreter->report(
+              stmtInterpreter->breakFlag->getRange(),
+              InterpretDiagnostic::error_unresolved_break_statement);
+        } else if (stmtInterpreter->returnFlag) {
+          result = std::move(stmtInterpreter->returnValue);
+        } else {
+          result = NilValue::create();
+        }
+      })
+      // Lambda function
+      .Case([&](LambdaValue *lambdaV) {
+        StmtInterpreter::ReplaceEnvScope replaceScope(
+            *stmtInterpreter, lambdaV->getEnvironment());
+        Environment::Scope scope(getEnv());
+
+        auto lambdaDecl = lambdaV->getExpression();
+
+        auto params = lambdaDecl->getParams();
+        if (params.size() != args.size()) {
+          stmtInterpreter->report(
+              expr.getRange(), InterpretDiagnostic::error_invalid_argument_size,
+              params.size(), args.size());
+          return;
+        }
+
+        for (const auto &[pattern, value] : llvm::zip(params, args)) {
+          if (!stmtInterpreter->matchPattern(*pattern, value.get())) {
+            stmtInterpreter->report(
+                expr.getRange(), InterpretDiagnostic::error_match_pattern_fail,
+                pattern->toString(), value->toString());
+            return;
+          }
+        }
+
+        Environment::Scope bodyScope(getEnv());
+
+        if (lambdaDecl->isExprBody()) {
+          auto *body = lambdaDecl->getExpr();
+          body->accept(*this);
+        } else {
+          for (auto *body : lambdaDecl->getStmtBody()) {
+            body->accept(*stmtInterpreter);
+            if (stmtInterpreter->isTerminated())
+              break;
+          }
+
+          if (stmtInterpreter->continueFlag) {
+            stmtInterpreter->report(
+                stmtInterpreter->continueFlag->getRange(),
+                InterpretDiagnostic::error_unresolved_continue_statement);
+          } else if (stmtInterpreter->breakFlag) {
+            stmtInterpreter->report(
+                stmtInterpreter->breakFlag->getRange(),
+                InterpretDiagnostic::error_unresolved_break_statement);
+          } else if (stmtInterpreter->returnFlag) {
+            result = std::move(stmtInterpreter->returnValue);
+          } else {
+            result = NilValue::create();
+          }
+        }
+      })
+      .Case([&](BuiltinFunctionValue *builtinV) {
+        auto func = builtinV->getFuncBody();
+        result = func(args, diag);
+      })
+      .Default(
+          [&](Value *) { llvm_unreachable("never used for call operation"); });
 }
 
 void RvExprInterpreter::visit(const ArrayExpression &expr) {

@@ -47,6 +47,17 @@ private:
                     .str());
   }
 
+  struct ReplaceEnvScope {
+    ReplaceEnvScope(StmtInterpreter &interpreter, const Environment &env)
+        : interpreter(interpreter), savedEnv(std::move(interpreter.env)) {
+      interpreter.env = env;
+    }
+
+  private:
+    StmtInterpreter &interpreter;
+    Environment savedEnv;
+  };
+
   void patternDeclaration(const Pattern &pattern);
   bool matchPattern(const Pattern &pattern, Value *value);
 

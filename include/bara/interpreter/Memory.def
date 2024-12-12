@@ -2,6 +2,7 @@
 #define MEMORY(Name)
 #endif
 
+MEMORY(Immutable)
 MEMORY(Value)
 MEMORY(Tuple)
 MEMORY(Vector)

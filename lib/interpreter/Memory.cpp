@@ -22,6 +22,16 @@ private:
   bool fail = false;
 };
 
+ImmutableMemory::~ImmutableMemory() = default;
+
+ImmutableMemory *ImmutableMemory::create(MemoryContext *context,
+                                         unique_ptr<Value> value) {
+  auto *mem = context->alloc<ImmutableMemory>(sizeof(ImmutableMemory));
+  return new (mem) ImmutableMemory(std::move(value));
+}
+
+void AssignVisitor::visit(ImmutableMemory &mem) { fail = true; }
+
 ValueMemory::~ValueMemory() = default;
 
 ValueMemory *ValueMemory::create(MemoryContext *context,

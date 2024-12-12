@@ -1,15 +1,14 @@
+#include "bara/interpreter/StmtInterpreter.h"
 #include "bara/ast/AST.h"
 #include "bara/interpreter/ExprInterpreter.h"
 #include "bara/interpreter/Memory.h"
-#include "bara/interpreter/StmtInterpreter.h"
 #include "bara/interpreter/Value.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 namespace bara {
 
 StmtInterpreter::StmtInterpreter(MemoryContext *context, Diagnostic &diag)
-    : context(context), diag(diag), env(),
-      rvInterpreter(new RvExprInterpreter(this)),
+    : context(context), diag(diag), rvInterpreter(new RvExprInterpreter(this)),
       lvInterpreter(new LvExprInterpreter(this)) {}
 
 StmtInterpreter::~StmtInterpreter() {
@@ -243,7 +242,7 @@ void StmtInterpreter::visit(const FunctionDeclaration &stmt) {
     return;
   }
 
-  auto *newMem = ValueMemory::create(context, std::move(functionV));
+  auto *newMem = ImmutableMemory::create(context, std::move(functionV));
   env.insert(functionName, newMem);
 }
 

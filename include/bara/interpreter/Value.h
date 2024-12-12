@@ -2,6 +2,7 @@
 #define BARA_VALUE_H
 
 #include "bara/ast/AST.h"
+#include "bara/diagnostic/Diagnostic.h"
 #include "bara/interpreter/Environment.h"
 #include "bara/interpreter/Memory.h"
 #include "bara/utils/VisitorBase.h"
@@ -237,6 +238,33 @@ public:
 private:
   Environment env;
   LambdaExpression *expr;
+};
+
+class BuiltinFunctionValue final : public Value {
+  using funcBodyType = llvm::function_ref<unique_ptr<Value>(
+      ArrayRef<unique_ptr<Value>>, Diagnostic &)>;
+
+  BuiltinFunctionValue(StringRef name, StringRef helpMsg, funcBodyType func)
+      : Value(ValueKind::BuiltinFunction), name(name), helpMsg(helpMsg),
+        func(func) {}
+
+public:
+  static bool classof(const Value *value) {
+    return value->getKind() == ValueKind::BuiltinFunction;
+  }
+
+  StringRef getName() const { return name; }
+  StringRef getHelp() const { return helpMsg; }
+
+  funcBodyType getFuncBody() const { return func; }
+
+  static unique_ptr<BuiltinFunctionValue>
+  create(StringRef name, StringRef helpMsg, funcBodyType func);
+
+private:
+  StringRef name;
+  StringRef helpMsg;
+  funcBodyType func;
 };
 
 } // namespace bara

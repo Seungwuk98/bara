@@ -78,6 +78,25 @@ private:
   MemoryKind kind;
 };
 
+class ImmutableMemory final : public Memory {
+  ImmutableMemory(unique_ptr<Value> value)
+      : Memory(MemoryKind::Immutable), value(std::move(value)) {}
+
+public:
+  ~ImmutableMemory();
+  static bool classof(const Memory *mem) {
+    return mem->getKind() == MemoryKind::Immutable;
+  }
+
+  Value *view() const { return value.get(); }
+
+  static ImmutableMemory *create(MemoryContext *context,
+                                 unique_ptr<Value> value);
+
+private:
+  unique_ptr<Value> value;
+};
+
 class ValueMemory final : public Memory {
   ValueMemory(unique_ptr<Value> value)
       : Memory(MemoryKind::Value), value(std::move(value)) {}
