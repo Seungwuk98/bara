@@ -71,16 +71,19 @@ public:
 
   bool assign(Value *value);
 
+  MemoryContext *getContext() const { return context; }
+
 protected:
-  Memory(MemoryKind kind) : kind(kind) {}
+  Memory(MemoryContext *context, MemoryKind kind) : kind(kind) {}
 
 private:
+  MemoryContext *context;
   MemoryKind kind;
 };
 
 class ImmutableMemory final : public Memory {
-  ImmutableMemory(unique_ptr<Value> value)
-      : Memory(MemoryKind::Immutable), value(std::move(value)) {}
+  ImmutableMemory(MemoryContext *context, unique_ptr<Value> value)
+      : Memory(context, MemoryKind::Immutable), value(std::move(value)) {}
 
 public:
   ~ImmutableMemory();
@@ -98,8 +101,8 @@ private:
 };
 
 class ValueMemory final : public Memory {
-  ValueMemory(unique_ptr<Value> value)
-      : Memory(MemoryKind::Value), value(std::move(value)) {}
+  ValueMemory(MemoryContext *context, unique_ptr<Value> value)
+      : Memory(context, MemoryKind::Value), value(std::move(value)) {}
 
 public:
   ~ValueMemory();
@@ -119,7 +122,8 @@ private:
 
 class TupleMemory final : public Memory,
                           public TrailingObjects<TupleMemory, Memory *> {
-  TupleMemory(size_t size) : Memory(MemoryKind::Tuple), size(size) {}
+  TupleMemory(MemoryContext *context, size_t size)
+      : Memory(context, MemoryKind::Tuple), size(size) {}
 
 public:
   static TupleMemory *create(MemoryContext *context, ArrayRef<Memory *> mems);
@@ -137,8 +141,8 @@ private:
 };
 
 class VectorMemory final : public Memory {
-  VectorMemory(ArrayRef<ValueMemory *> mems)
-      : Memory(MemoryKind::Vector), mems(mems) {}
+  VectorMemory(MemoryContext *context, ArrayRef<ValueMemory *> mems)
+      : Memory(context, MemoryKind::Vector), mems(mems) {}
 
 public:
   static VectorMemory *create(MemoryContext *context,
@@ -148,7 +152,7 @@ public:
     return mem->getKind() == MemoryKind::Vector;
   }
 
-  Memory *get(size_t index) const { return mems[index]; }
+  ValueMemory *get(size_t index) const { return mems[index]; }
   size_t size() const { return mems.size(); }
   bool empty() const { return mems.empty(); }
   auto begin() const { return mems.begin(); }

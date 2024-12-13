@@ -6,6 +6,7 @@ add_library(
   Value.cpp
   RvInterpreter.cpp
   LvInterpreter.cpp
+  BinaryOperations.cpp
 )
 
 target_link_libraries(

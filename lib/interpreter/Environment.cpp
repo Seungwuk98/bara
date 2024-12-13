@@ -8,6 +8,9 @@ Memory *Environment::lookup(StringRef name) const {
     if (it != scope.end())
       return it->second;
   }
+
+  if (auto it = builtinFuncTable->find(name); it != builtinFuncTable->end())
+    return it->second;
   return nullptr;
 }
 

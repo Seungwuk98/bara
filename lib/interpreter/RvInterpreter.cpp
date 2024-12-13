@@ -4,8 +4,76 @@
 #include "bara/interpreter/StmtInterpreter.h"
 #include "bara/interpreter/Value.h"
 #include <limits>
+#include <llvm-18/llvm/ADT/TypeSwitch.h>
 
 namespace bara {
+
+template <typename L, typename R>
+optional<pair<const L *, const R *>> matchPair(const Value *l, const Value *r) {
+  if (auto *l1 = l->dyn_cast<L>())
+    if (auto *r1 = r->dyn_cast<R>())
+      return std::make_pair(l1, r1);
+  return nullopt;
+}
+
+namespace BinaryOp {
+extern unique_ptr<Value> add(const Value *l, const Value *r);
+extern unique_ptr<Value> sub(const Value *l, const Value *r);
+extern unique_ptr<Value> mul(const Value *l, const Value *r);
+extern unique_ptr<Value> div(const Value *l, const Value *r);
+extern unique_ptr<Value> mod(const Value *l, const Value *r);
+extern unique_ptr<Value> eq(const Value *l, const Value *r);
+extern unique_ptr<Value> ne(const Value *l, const Value *r);
+extern unique_ptr<Value> lt(const Value *l, const Value *r);
+extern unique_ptr<Value> le(const Value *l, const Value *r);
+extern unique_ptr<Value> gt(const Value *l, const Value *r);
+extern unique_ptr<Value> ge(const Value *l, const Value *r);
+extern unique_ptr<Value> logicalAnd(const Value *l, const Value *r);
+extern unique_ptr<Value> logicalOr(const Value *l, const Value *r);
+extern unique_ptr<Value> bitAnd(const Value *l, const Value *r);
+extern unique_ptr<Value> bitOr(const Value *l, const Value *r);
+extern unique_ptr<Value> bitXor(const Value *l, const Value *r);
+extern unique_ptr<Value> shl(const Value *l, const Value *r);
+extern unique_ptr<Value> shr(const Value *l, const Value *r);
+
+} // namespace BinaryOp
+
+unique_ptr<Value> RvExprInterpreter::binaryOp(SMRange range, const Value *l,
+                                              const Value *r, Operator op) {
+  switch (op) {
+#define BINARY_OP(op, func)                                                    \
+  case Operator::op: {                                                         \
+    auto result = BinaryOp::func(l, r);                                        \
+    if (result)                                                                \
+      return result;                                                           \
+    break;                                                                     \
+  }
+    BINARY_OP(Plus, add)
+    BINARY_OP(Minus, sub)
+    BINARY_OP(Mul, mul)
+    BINARY_OP(Div, div)
+    BINARY_OP(Mod, mod)
+    BINARY_OP(Eq, eq)
+    BINARY_OP(Ne, ne)
+    BINARY_OP(Lt, lt)
+    BINARY_OP(Le, le)
+    BINARY_OP(Gt, gt)
+    BINARY_OP(Ge, ge)
+    BINARY_OP(BitAnd, bitAnd)
+    BINARY_OP(BitOr, bitOr)
+    BINARY_OP(BitXor, bitXor)
+    BINARY_OP(Shl, shl)
+    BINARY_OP(Shr, shr)
+
+#undef BINARY_OP
+  default:
+    break;
+  }
+  stmtInterpreter->report(
+      range, InterpretDiagnostic::error_invalid_operand_for_binary_operator,
+      operatorToString(op), l->toString(), r->toString());
+  return nullptr;
+}
 
 void RvExprInterpreter::visit(const IdentifierExpression &expr) {
   auto *memory = interpretIdentifier(&expr);
@@ -17,11 +85,16 @@ void RvExprInterpreter::visit(const IdentifierExpression &expr) {
 }
 
 void RvExprInterpreter::visit(const IndexExpression &expr) {
-  auto *memory = interpretIndex(&expr);
+  auto memoryOrChar = interpretIndex(&expr);
   if (diag.hasError())
     return;
 
-  auto *valueMemory = memory->cast<ValueMemory>();
+  if (std::holds_alternative<char>(memoryOrChar)) {
+    result = StringValue::create({&std::get<char>(memoryOrChar), 1});
+    return;
+  }
+
+  auto *valueMemory = std::get<Memory *>(memoryOrChar)->cast<ValueMemory>();
   result = valueMemory->view()->clone();
 }
 
@@ -44,7 +117,7 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
     return;
   auto rhs = std::move(result);
 
-  result = binaryOp(lhs.get(), rhs.get(), expr.getOperator());
+  result = binaryOp(expr.getRange(), lhs.get(), rhs.get(), expr.getOperator());
 }
 
 void RvExprInterpreter::visit(const UnaryExpression &expr) {

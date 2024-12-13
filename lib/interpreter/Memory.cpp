@@ -27,7 +27,7 @@ ImmutableMemory::~ImmutableMemory() = default;
 ImmutableMemory *ImmutableMemory::create(MemoryContext *context,
                                          unique_ptr<Value> value) {
   auto *mem = context->alloc<ImmutableMemory>(sizeof(ImmutableMemory));
-  return new (mem) ImmutableMemory(std::move(value));
+  return new (mem) ImmutableMemory(context, std::move(value));
 }
 
 void AssignVisitor::visit(ImmutableMemory &mem) { fail = true; }
@@ -37,7 +37,7 @@ ValueMemory::~ValueMemory() = default;
 ValueMemory *ValueMemory::create(MemoryContext *context,
                                  unique_ptr<Value> value) {
   auto *mem = context->alloc<ValueMemory>(sizeof(ValueMemory));
-  return new (mem) ValueMemory(std::move(value));
+  return new (mem) ValueMemory(context, std::move(value));
 }
 
 void AssignVisitor::visit(ValueMemory &mem) { mem.assign(value->clone()); }
@@ -46,7 +46,7 @@ TupleMemory *TupleMemory::create(MemoryContext *context,
                                  ArrayRef<Memory *> mems) {
   auto allocSize = totalSizeToAlloc<Memory *>(mems.size());
   auto *mem = context->alloc<TupleMemory>(allocSize);
-  auto *tupleMem = new (mem) TupleMemory(mems.size());
+  auto *tupleMem = new (mem) TupleMemory(context, mems.size());
   std::uninitialized_copy(mems.begin(), mems.end(),
                           tupleMem->getTrailingObjects<Memory *>());
   return tupleMem;
@@ -74,7 +74,7 @@ void AssignVisitor::visit(TupleMemory &mem) {
 VectorMemory *VectorMemory::create(MemoryContext *context,
                                    ArrayRef<ValueMemory *> mems) {
   auto *mem = context->alloc<VectorMemory>(sizeof(VectorMemory));
-  return new (mem) VectorMemory(mems);
+  return new (mem) VectorMemory(context, mems);
 }
 
 void AssignVisitor::visit(VectorMemory &mem) {

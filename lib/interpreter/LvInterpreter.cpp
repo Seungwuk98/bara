@@ -1,5 +1,6 @@
 #include "bara/ast/AST.h"
 #include "bara/interpreter/ExprInterpreter.h"
+#include <variant>
 
 namespace bara {
 
@@ -8,7 +9,13 @@ void LvExprInterpreter::visit(const IdentifierExpression &expr) {
 }
 
 void LvExprInterpreter::visit(const IndexExpression &expr) {
-  result = interpretIndex(&expr);
+  auto lv = interpretIndex(&expr);
+  if (std::holds_alternative<char>(lv)) {
+    stmtInterpreter->report(expr.getRange(),
+                            InterpretDiagnostic::error_string_index_assignment);
+    return;
+  }
+  result = std::get<Memory *>(lv);
 }
 
 #define EXPRESSION(Name)                                                       \

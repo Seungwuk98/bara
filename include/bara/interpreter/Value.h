@@ -161,7 +161,7 @@ public:
   static unique_ptr<ListValue> create(VectorMemory *memory);
 
   VectorMemory *getVectorMemory() const { return memory; }
-  Memory *getElement(size_t index) const { return memory->get(index); }
+  ValueMemory *getElement(size_t index) const { return memory->get(index); }
   size_t size() const { return memory->size(); }
   bool empty() const { return memory->empty(); }
 

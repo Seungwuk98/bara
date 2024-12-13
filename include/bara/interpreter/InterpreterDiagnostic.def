@@ -13,6 +13,7 @@ DIAG(error_unresolved_break_statement, "Unresolved break statement", Error)
 DIAG(error_unresolved_continue_statement, "Unresolved continue statement",
      Error)
 DIAG(error_assignment_fail, "Assignment value({0}) fail", Error)
+DIAG(error_string_index_assignment, "String index assignment is invalid", Error)
 DIAG(error_invalid_left_size_of_operator_assignment,
      "Left side of operator({0}) assignemnt is invalid.", Error)
 DIAG(error_unknown_identifier, "Unknown identifier '{0}'", Error)
@@ -21,9 +22,11 @@ DIAG(error_invalid_type_for_access,
      "Index expression requires integer type for access. got({0})", Error)
 DIAG(error_out_of_range, "Index out of range. index({0}), size({1})", Error)
 DIAG(error_invalid_expression_for_assignment,
-     "Invalid expression for assignment. got '{0}'", Error)
+     "Invalid expression for assignment. got ({0})", Error)
 DIAG(error_invalid_operand_for_unary_operator,
-     "Invalid operand for unary operator({0}). got '{1}'", Error)
+     "Invalid operand for unary operator({0}). got ({1})", Error)
+DIAG(error_invalid_operand_for_binary_operator,
+     "Invalid operand for binary operator({0}). got ({1}), ({2})", Error)
 DIAG(error_invalid_callee,
      "Invalid callee. expetected function value or lambda. got '{0}'", Error)
 DIAG(error_invalid_argument_size,

@@ -1,11 +1,15 @@
 #ifndef BARA_MEMORY_CONTEXT_H
 #define BARA_MEMORY_CONTEXT_H
 
+#include "bara/utils/LLVM.h"
 #include "bara/utils/STL.h"
 
 namespace bara {
+class ImmutableMemory;
+
 class MemoryContext {
 public:
+  MemoryContext();
   ~MemoryContext();
 
   template <typename DestructTy>
@@ -18,8 +22,11 @@ public:
     return ptr;
   }
 
+  DenseMap<StringRef, ImmutableMemory *> *getBuiltinFuncTable();
+
 private:
   vector<pair<void *, function<void(void *)>>> allocations;
+  DenseMap<StringRef, ImmutableMemory *> builtinFuncTable;
 };
 } // namespace bara
 

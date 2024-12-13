@@ -7,6 +7,7 @@
 #include "bara/interpreter/StmtInterpreter.h"
 #include "bara/interpreter/Value.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include <variant>
 
 namespace bara {
 
@@ -21,7 +22,7 @@ public:
         stmtInterpreter(stmtInterpreter) {}
 
   Memory *interpretIdentifier(const IdentifierExpression *expr);
-  Memory *interpretIndex(const IndexExpression *expr);
+  std::variant<Memory *, char> interpretIndex(const IndexExpression *expr);
 
   Environment &getEnv() { return stmtInterpreter->env; }
 
@@ -46,7 +47,8 @@ public:
 
   unique_ptr<Value> getResult() { return std::move(result); }
 
-  unique_ptr<Value> binaryOp(Value *l, Value *r, Operator op);
+  unique_ptr<Value> binaryOp(SMRange range, const Value *l, const Value *r,
+                             Operator op);
 
 private:
   friend class StmtInterpreter;
@@ -88,14 +90,15 @@ Memory *CommonExprInterpreter<ConcreteType>::interpretIdentifier(
 }
 
 template <typename ConcreteType>
-Memory *CommonExprInterpreter<ConcreteType>::interpretIndex(
+std::variant<Memory *, char>
+CommonExprInterpreter<ConcreteType>::interpretIndex(
     const IndexExpression *expr) {
 
   auto value = stmtInterpreter->rvInterpret(*expr->getLhs());
   if (diag.hasError())
     return nullptr;
 
-  if (!value->isa<ListValue, TupleValue>()) {
+  if (!value->isa<ListValue, TupleValue, StringValue>()) {
     stmtInterpreter->report(expr->getLhs()->getRange(),
                             InterpretDiagnostic::error_invalid_type_to_access,
                             value->toString());
@@ -114,8 +117,17 @@ Memory *CommonExprInterpreter<ConcreteType>::interpretIndex(
   }
 
   int64_t indexValue = index->cast<IntegerValue>()->getValue();
-  return llvm::TypeSwitch<Value *, Memory *>(value.get())
-      .Case([&](const ListValue *list) -> Memory * {
+  return llvm::TypeSwitch<Value *, std::variant<Memory *, char>>(value.get())
+      .Case([&](const StringValue *str) -> std::variant<Memory *, char> {
+        if (indexValue < 0 || indexValue >= str->getValue().size()) {
+          stmtInterpreter->report(expr->getRange(),
+                                  InterpretDiagnostic::error_out_of_range,
+                                  indexValue, str->getValue().size());
+          return nullptr;
+        }
+        return str->getValue()[indexValue];
+      })
+      .Case([&](const ListValue *list) -> std::variant<Memory *, char> {
         if (indexValue < 0 || indexValue >= list->size()) {
           stmtInterpreter->report(expr->getRange(),
                                   InterpretDiagnostic::error_out_of_range,
@@ -124,7 +136,7 @@ Memory *CommonExprInterpreter<ConcreteType>::interpretIndex(
         }
         return list->getElement(indexValue);
       })
-      .Default([&](const Value *tuple) -> Memory * {
+      .Default([&](const Value *tuple) -> std::variant<Memory *, char> {
         auto tupleValue = tuple->cast<TupleValue>();
         if (indexValue < 0 || indexValue >= tupleValue->size()) {
           stmtInterpreter->report(expr->getRange(),

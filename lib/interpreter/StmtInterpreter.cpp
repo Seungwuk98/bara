@@ -8,7 +8,8 @@
 namespace bara {
 
 StmtInterpreter::StmtInterpreter(MemoryContext *context, Diagnostic &diag)
-    : context(context), diag(diag), rvInterpreter(new RvExprInterpreter(this)),
+    : context(context), diag(diag), env(context->getBuiltinFuncTable()),
+      rvInterpreter(new RvExprInterpreter(this)),
       lvInterpreter(new LvExprInterpreter(this)) {}
 
 StmtInterpreter::~StmtInterpreter() {
@@ -225,7 +226,8 @@ void StmtInterpreter::visit(const OperatorAssignmentStatement &stmt) {
   if (isTerminated())
     return;
 
-  auto result = rvInterpreter->binaryOp(lhsV, rhsV.get(), stmt.getOperator());
+  auto result = rvInterpreter->binaryOp(stmt.getRange(), lhsV, rhsV.get(),
+                                        stmt.getOperator());
   if (isTerminated())
     return;
 
