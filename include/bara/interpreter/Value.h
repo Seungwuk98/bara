@@ -74,6 +74,7 @@ public:
   string toString() const;
   unique_ptr<Value> clone() const;
   optional<bool> toBool() const;
+  bool isEqual(const Value *value) const;
 
   void accept(ConstValueVisitor &visitor) const;
 
@@ -181,7 +182,7 @@ public:
   static unique_ptr<TupleValue> create(ArrayRef<ValueMemory *> mems);
 
   ArrayRef<ValueMemory *> getMemories() const { return mems; }
-  Memory *getElement(size_t index) const { return mems[index]; }
+  ValueMemory *getElement(size_t index) const { return mems[index]; }
   size_t size() const { return mems.size(); }
   bool empty() const { return mems.empty(); }
 
@@ -242,7 +243,7 @@ private:
 
 class BuiltinFunctionValue final : public Value {
   using funcBodyType = llvm::function_ref<unique_ptr<Value>(
-      ArrayRef<unique_ptr<Value>>, Diagnostic &)>;
+      ArrayRef<unique_ptr<Value>>, Diagnostic &, SMRange)>;
 
   BuiltinFunctionValue(StringRef name, StringRef helpMsg, funcBodyType func)
       : Value(ValueKind::BuiltinFunction), name(name), helpMsg(helpMsg),

@@ -7,6 +7,7 @@ add_library(
   RvInterpreter.cpp
   LvInterpreter.cpp
   BinaryOperations.cpp
+  BuiltinFunctions.cpp
 )
 
 target_link_libraries(

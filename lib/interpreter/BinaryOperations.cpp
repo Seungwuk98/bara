@@ -292,199 +292,404 @@ public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void ModVisitor::visit(const IntegerValue &l) {}
-void ModVisitor::visit(const BoolValue &l) {}
-void ModVisitor::visit(const FloatValue &l) {}
-void ModVisitor::visit(const ListValue &l) {}
-void ModVisitor::visit(const TupleValue &l) {}
-void ModVisitor::visit(const NilValue &l) {}
-void ModVisitor::visit(const FunctionValue &l) {}
-void ModVisitor::visit(const LambdaValue &l) {}
-void ModVisitor::visit(const BuiltinFunctionValue &l) {}
 
-class EqVisitor : public BinaryOpVisitorImpl<EqVisitor> {
-public:
-#define VALUE(Name) void visit(const Name##Value &l);
-#include "bara/interpreter/Value.def"
-};
-void EqVisitor::visit(const IntegerValue &l) {}
-void EqVisitor::visit(const BoolValue &l) {}
-void EqVisitor::visit(const FloatValue &l) {}
-void EqVisitor::visit(const ListValue &l) {}
-void EqVisitor::visit(const TupleValue &l) {}
-void EqVisitor::visit(const NilValue &l) {}
-void EqVisitor::visit(const FunctionValue &l) {}
-void EqVisitor::visit(const LambdaValue &l) {}
-void EqVisitor::visit(const BuiltinFunctionValue &l) {}
+void ModVisitor::visit(const IntegerValue &l) {
+  if (const IntegerValue *intR = r->dyn_cast<IntegerValue>()) {
+    auto value = l.getValue() % intR->getValue();
+    result = IntegerValue::create(value);
+  } else
+    result = nullptr;
+}
 
-class NeVisitor : public BinaryOpVisitorImpl<NeVisitor> {
-public:
-#define VALUE(Name) void visit(const Name##Value &l);
-#include "bara/interpreter/Value.def"
-};
-void NeVisitor::visit(const IntegerValue &l) {}
-void NeVisitor::visit(const BoolValue &l) {}
-void NeVisitor::visit(const FloatValue &l) {}
-void NeVisitor::visit(const ListValue &l) {}
-void NeVisitor::visit(const TupleValue &l) {}
-void NeVisitor::visit(const NilValue &l) {}
-void NeVisitor::visit(const FunctionValue &l) {}
-void NeVisitor::visit(const LambdaValue &l) {}
-void NeVisitor::visit(const BuiltinFunctionValue &l) {}
+void ModVisitor::visit(const BoolValue &l) { result = nullptr; }
+void ModVisitor::visit(const FloatValue &l) { result = nullptr; }
+void ModVisitor::visit(const ListValue &l) { result = nullptr; }
+void ModVisitor::visit(const TupleValue &l) { result = nullptr; }
+void ModVisitor::visit(const NilValue &l) { result = nullptr; }
+void ModVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void ModVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void ModVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class LtVisitor : public BinaryOpVisitorImpl<LtVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void LtVisitor::visit(const IntegerValue &l) {}
-void LtVisitor::visit(const BoolValue &l) {}
-void LtVisitor::visit(const FloatValue &l) {}
-void LtVisitor::visit(const ListValue &l) {}
-void LtVisitor::visit(const TupleValue &l) {}
-void LtVisitor::visit(const NilValue &l) {}
-void LtVisitor::visit(const FunctionValue &l) {}
-void LtVisitor::visit(const LambdaValue &l) {}
-void LtVisitor::visit(const BuiltinFunctionValue &l) {}
+void LtVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) {
+                 auto value = l.getValue() < r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Case([&](const FloatValue *r) {
+                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
+                 auto value = floatL < r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Default(null);
+}
+void LtVisitor::visit(const BoolValue &l) { result = nullptr; }
+void LtVisitor::visit(const FloatValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) {
+                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
+                 auto value = l.getValue() < floatR;
+                 return BoolValue::create(value);
+               })
+               .Case([&](const FloatValue *r) {
+                 auto value = l.getValue() < r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Default(null);
+}
+void LtVisitor::visit(const ListValue &l) { result = nullptr; }
+void LtVisitor::visit(const TupleValue &l) { result = nullptr; }
+void LtVisitor::visit(const NilValue &l) { result = nullptr; }
+void LtVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void LtVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void LtVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class LeVisitor : public BinaryOpVisitorImpl<LeVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void LeVisitor::visit(const IntegerValue &l) {}
-void LeVisitor::visit(const BoolValue &l) {}
-void LeVisitor::visit(const FloatValue &l) {}
-void LeVisitor::visit(const ListValue &l) {}
-void LeVisitor::visit(const TupleValue &l) {}
-void LeVisitor::visit(const NilValue &l) {}
-void LeVisitor::visit(const FunctionValue &l) {}
-void LeVisitor::visit(const LambdaValue &l) {}
-void LeVisitor::visit(const BuiltinFunctionValue &l) {}
+void LeVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) {
+                 auto value = l.getValue() <= r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Case([&](const FloatValue *r) {
+                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
+                 auto value = floatL <= r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Default(null);
+}
+void LeVisitor::visit(const BoolValue &l) { result = nullptr; }
+void LeVisitor::visit(const FloatValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) {
+                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
+                 auto value = l.getValue() <= floatR;
+                 return BoolValue::create(value);
+               })
+               .Case([&](const FloatValue *r) {
+                 auto value = l.getValue() <= r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Default(null);
+}
+void LeVisitor::visit(const ListValue &l) { result = nullptr; }
+void LeVisitor::visit(const TupleValue &l) { result = nullptr; }
+void LeVisitor::visit(const NilValue &l) { result = nullptr; }
+void LeVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void LeVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void LeVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class GtVisitor : public BinaryOpVisitorImpl<GtVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void GtVisitor::visit(const IntegerValue &l) {}
-void GtVisitor::visit(const BoolValue &l) {}
-void GtVisitor::visit(const FloatValue &l) {}
-void GtVisitor::visit(const ListValue &l) {}
-void GtVisitor::visit(const TupleValue &l) {}
-void GtVisitor::visit(const NilValue &l) {}
-void GtVisitor::visit(const FunctionValue &l) {}
-void GtVisitor::visit(const LambdaValue &l) {}
-void GtVisitor::visit(const BuiltinFunctionValue &l) {}
+void GtVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) {
+                 auto value = l.getValue() > r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Case([&](const FloatValue *r) {
+                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
+                 auto value = floatL > r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Default(null);
+}
+void GtVisitor::visit(const BoolValue &l) { result = nullptr; }
+void GtVisitor::visit(const FloatValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) {
+                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
+                 auto value = l.getValue() > floatR;
+                 return BoolValue::create(value);
+               })
+               .Case([&](const FloatValue *r) {
+                 auto value = l.getValue() > r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Default(null);
+}
+void GtVisitor::visit(const ListValue &l) { result = nullptr; }
+void GtVisitor::visit(const TupleValue &l) { result = nullptr; }
+void GtVisitor::visit(const NilValue &l) { result = nullptr; }
+void GtVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void GtVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void GtVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class GeVisitor : public BinaryOpVisitorImpl<GeVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void GeVisitor::visit(const IntegerValue &l) {}
-void GeVisitor::visit(const BoolValue &l) {}
-void GeVisitor::visit(const FloatValue &l) {}
-void GeVisitor::visit(const ListValue &l) {}
-void GeVisitor::visit(const TupleValue &l) {}
-void GeVisitor::visit(const NilValue &l) {}
-void GeVisitor::visit(const FunctionValue &l) {}
-void GeVisitor::visit(const LambdaValue &l) {}
-void GeVisitor::visit(const BuiltinFunctionValue &l) {}
+void GeVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) {
+                 auto value = l.getValue() >= r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Case([&](const FloatValue *r) {
+                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
+                 auto value = floatL >= r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Default(null);
+}
+void GeVisitor::visit(const BoolValue &l) { result = nullptr; }
+void GeVisitor::visit(const FloatValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) {
+                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
+                 auto value = l.getValue() >= floatR;
+                 return BoolValue::create(value);
+               })
+               .Case([&](const FloatValue *r) {
+                 auto value = l.getValue() >= r->getValue();
+                 return BoolValue::create(value);
+               })
+               .Default(null);
+}
+void GeVisitor::visit(const ListValue &l) { result = nullptr; }
+void GeVisitor::visit(const TupleValue &l) { result = nullptr; }
+void GeVisitor::visit(const NilValue &l) { result = nullptr; }
+void GeVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void GeVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void GeVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class BitAndVisitor : public BinaryOpVisitorImpl<BitAndVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void BitAndVisitor::visit(const IntegerValue &l) {}
-void BitAndVisitor::visit(const BoolValue &l) {}
-void BitAndVisitor::visit(const FloatValue &l) {}
-void BitAndVisitor::visit(const ListValue &l) {}
-void BitAndVisitor::visit(const TupleValue &l) {}
-void BitAndVisitor::visit(const NilValue &l) {}
-void BitAndVisitor::visit(const FunctionValue &l) {}
-void BitAndVisitor::visit(const LambdaValue &l) {}
-void BitAndVisitor::visit(const BuiltinFunctionValue &l) {}
+
+namespace {
+static unique_ptr<Value> bitAnd(const IntegerValue *l, const IntegerValue *r) {
+  auto value = l->getValue() & r->getValue();
+  return IntegerValue::create(value);
+}
+static unique_ptr<Value> bitAnd(const IntegerValue *l, const BoolValue *r) {
+  auto value = l->getValue() & r->getValue();
+  return IntegerValue::create(value);
+}
+static unique_ptr<Value> bitAnd(const BoolValue *l, const BoolValue *r) {
+  auto value = l->getValue() & r->getValue();
+  return IntegerValue::create(value);
+}
+} // namespace
+void BitAndVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) { bitAnd(&l, r); })
+               .Case([&](const BoolValue *r) { bitAnd(&l, r); })
+               .Default(null);
+}
+void BitAndVisitor::visit(const BoolValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) { bitAnd(r, &l); })
+               .Case([&](const BoolValue *r) { bitAnd(&l, r); })
+               .Default(null);
+}
+void BitAndVisitor::visit(const FloatValue &l) { result = nullptr; }
+void BitAndVisitor::visit(const ListValue &l) { result = nullptr; }
+void BitAndVisitor::visit(const TupleValue &l) { result = nullptr; }
+void BitAndVisitor::visit(const NilValue &l) { result = nullptr; }
+void BitAndVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void BitAndVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void BitAndVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class BitOrVisitor : public BinaryOpVisitorImpl<BitOrVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void BitOrVisitor::visit(const IntegerValue &l) {}
-void BitOrVisitor::visit(const BoolValue &l) {}
-void BitOrVisitor::visit(const FloatValue &l) {}
-void BitOrVisitor::visit(const ListValue &l) {}
-void BitOrVisitor::visit(const TupleValue &l) {}
-void BitOrVisitor::visit(const NilValue &l) {}
-void BitOrVisitor::visit(const FunctionValue &l) {}
-void BitOrVisitor::visit(const LambdaValue &l) {}
-void BitOrVisitor::visit(const BuiltinFunctionValue &l) {}
+namespace {
+static unique_ptr<Value> bitOr(const IntegerValue *l, const IntegerValue *r) {
+  auto value = l->getValue() | r->getValue();
+  return IntegerValue::create(value);
+}
+static unique_ptr<Value> bitOr(const IntegerValue *l, const BoolValue *r) {
+  auto value = l->getValue() | r->getValue();
+  return IntegerValue::create(value);
+}
+static unique_ptr<Value> bitOr(const BoolValue *l, const BoolValue *r) {
+  auto value = l->getValue() | r->getValue();
+  return IntegerValue::create(value);
+}
+} // namespace
+
+void BitOrVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) { bitOr(&l, r); })
+               .Case([&](const BoolValue *r) { bitOr(&l, r); })
+               .Default(null);
+}
+void BitOrVisitor::visit(const BoolValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) { bitOr(r, &l); })
+               .Case([&](const BoolValue *r) { bitOr(&l, r); })
+               .Default(null);
+}
+void BitOrVisitor::visit(const FloatValue &l) { result = nullptr; }
+void BitOrVisitor::visit(const ListValue &l) { result = nullptr; }
+void BitOrVisitor::visit(const TupleValue &l) { result = nullptr; }
+void BitOrVisitor::visit(const NilValue &l) { result = nullptr; }
+void BitOrVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void BitOrVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void BitOrVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class BitXorVisitor : public BinaryOpVisitorImpl<BitXorVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void BitXorVisitor::visit(const IntegerValue &l) {}
-void BitXorVisitor::visit(const BoolValue &l) {}
-void BitXorVisitor::visit(const FloatValue &l) {}
-void BitXorVisitor::visit(const ListValue &l) {}
-void BitXorVisitor::visit(const TupleValue &l) {}
-void BitXorVisitor::visit(const NilValue &l) {}
-void BitXorVisitor::visit(const FunctionValue &l) {}
-void BitXorVisitor::visit(const LambdaValue &l) {}
-void BitXorVisitor::visit(const BuiltinFunctionValue &l) {}
+namespace {
+static unique_ptr<Value> bitXor(const IntegerValue *l, const IntegerValue *r) {
+  auto value = l->getValue() ^ r->getValue();
+  return IntegerValue::create(value);
+}
+static unique_ptr<Value> bitXor(const IntegerValue *l, const BoolValue *r) {
+  auto value = l->getValue() ^ r->getValue();
+  return IntegerValue::create(value);
+}
+static unique_ptr<Value> bitXor(const BoolValue *l, const BoolValue *r) {
+  auto value = l->getValue() ^ r->getValue();
+  return IntegerValue::create(value);
+}
+
+} // namespace
+void BitXorVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) { bitXor(&l, r); })
+               .Case([&](const BoolValue *r) { bitXor(&l, r); })
+               .Default(null);
+}
+void BitXorVisitor::visit(const BoolValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) { bitXor(r, &l); })
+               .Case([&](const BoolValue *r) { bitXor(&l, r); })
+               .Default(null);
+}
+void BitXorVisitor::visit(const FloatValue &l) { result = nullptr; }
+void BitXorVisitor::visit(const ListValue &l) { result = nullptr; }
+void BitXorVisitor::visit(const TupleValue &l) { result = nullptr; }
+void BitXorVisitor::visit(const NilValue &l) { result = nullptr; }
+void BitXorVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void BitXorVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void BitXorVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class ShlVisitor : public BinaryOpVisitorImpl<ShlVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void ShlVisitor::visit(const IntegerValue &l) {}
-void ShlVisitor::visit(const BoolValue &l) {}
-void ShlVisitor::visit(const FloatValue &l) {}
-void ShlVisitor::visit(const ListValue &l) {}
-void ShlVisitor::visit(const TupleValue &l) {}
-void ShlVisitor::visit(const NilValue &l) {}
-void ShlVisitor::visit(const FunctionValue &l) {}
-void ShlVisitor::visit(const LambdaValue &l) {}
-void ShlVisitor::visit(const BuiltinFunctionValue &l) {}
+void ShlVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+                 if (r->getValue() < 0)
+                   return nullptr;
+                 auto value = l.getValue() << r->getValue();
+                 return IntegerValue::create(value);
+               })
+               .Case([&](const BoolValue *r) {
+                 auto value = l.getValue() << r->getValue();
+                 return IntegerValue::create(value);
+               })
+               .Default(null);
+}
+void ShlVisitor::visit(const BoolValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+                 if (r->getValue() < 0)
+                   return nullptr;
+                 auto value = l.getValue() << r->getValue();
+                 return IntegerValue::create(value);
+               })
+               .Case([&](const BoolValue *r) {
+                 auto value = l.getValue() << r->getValue();
+                 return IntegerValue::create(value);
+               })
+               .Default(null);
+}
+void ShlVisitor::visit(const FloatValue &l) { result = nullptr; }
+void ShlVisitor::visit(const ListValue &l) { result = nullptr; }
+void ShlVisitor::visit(const TupleValue &l) { result = nullptr; }
+void ShlVisitor::visit(const NilValue &l) { result = nullptr; }
+void ShlVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void ShlVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void ShlVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 class ShrVisitor : public BinaryOpVisitorImpl<ShrVisitor> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 };
-void ShrVisitor::visit(const IntegerValue &l) {}
-void ShrVisitor::visit(const BoolValue &l) {}
-void ShrVisitor::visit(const FloatValue &l) {}
-void ShrVisitor::visit(const ListValue &l) {}
-void ShrVisitor::visit(const TupleValue &l) {}
-void ShrVisitor::visit(const NilValue &l) {}
-void ShrVisitor::visit(const FunctionValue &l) {}
-void ShrVisitor::visit(const LambdaValue &l) {}
-void ShrVisitor::visit(const BuiltinFunctionValue &l) {}
+void ShrVisitor::visit(const IntegerValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+                 if (r->getValue() < 0)
+                   return nullptr;
+                 auto value = l.getValue() >> r->getValue();
+                 return IntegerValue::create(value);
+               })
+               .Case([&](const BoolValue *r) {
+                 auto value = l.getValue() >> r->getValue();
+                 return IntegerValue::create(value);
+               })
+               .Default(null);
+}
+void ShrVisitor::visit(const BoolValue &l) {
+  result = ValueSwitch(r)
+               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+                 if (r->getValue() < 0)
+                   return nullptr;
+                 auto value = l.getValue() >> r->getValue();
+                 return IntegerValue::create(value);
+               })
+               .Case([&](const BoolValue *r) {
+                 auto value = l.getValue() >> r->getValue();
+                 return IntegerValue::create(value);
+               })
+               .Default(null);
+}
+void ShrVisitor::visit(const FloatValue &l) { result = nullptr; }
+void ShrVisitor::visit(const ListValue &l) { result = nullptr; }
+void ShrVisitor::visit(const TupleValue &l) { result = nullptr; }
+void ShrVisitor::visit(const NilValue &l) { result = nullptr; }
+void ShrVisitor::visit(const FunctionValue &l) { result = nullptr; }
+void ShrVisitor::visit(const LambdaValue &l) { result = nullptr; }
+void ShrVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 namespace BinaryOp {
-unique_ptr<Value> add(const Value *l, const Value *r);
-unique_ptr<Value> sub(const Value *l, const Value *r);
-unique_ptr<Value> mul(const Value *l, const Value *r);
-unique_ptr<Value> div(const Value *l, const Value *r);
-unique_ptr<Value> mod(const Value *l, const Value *r);
-unique_ptr<Value> eq(const Value *l, const Value *r);
-unique_ptr<Value> ne(const Value *l, const Value *r);
-unique_ptr<Value> lt(const Value *l, const Value *r);
-unique_ptr<Value> le(const Value *l, const Value *r);
-unique_ptr<Value> gt(const Value *l, const Value *r);
-unique_ptr<Value> ge(const Value *l, const Value *r);
-unique_ptr<Value> logicalAnd(const Value *l, const Value *r);
-unique_ptr<Value> logicalOr(const Value *l, const Value *r);
-unique_ptr<Value> bitAnd(const Value *l, const Value *r);
-unique_ptr<Value> bitOr(const Value *l, const Value *r);
-unique_ptr<Value> bitXor(const Value *l, const Value *r);
-unique_ptr<Value> shl(const Value *l, const Value *r);
-unique_ptr<Value> shr(const Value *l, const Value *r);
+#define BINARY_FUNC(funcName, VisitorName)                                     \
+  unique_ptr<Value> funcName(const Value *l, const Value *r) {                 \
+    VisitorName visitor;                                                       \
+    visitor.init(r);                                                           \
+    l->accept(visitor);                                                        \
+    return visitor.getResult();                                                \
+  }
+BINARY_FUNC(add, AddVisitor)
+BINARY_FUNC(sub, SubVisitor)
+BINARY_FUNC(mul, MulVisitor)
+BINARY_FUNC(div, DivVisitor)
+BINARY_FUNC(mod, ModVisitor)
+BINARY_FUNC(lt, LtVisitor)
+BINARY_FUNC(le, LeVisitor)
+BINARY_FUNC(gt, GtVisitor)
+BINARY_FUNC(ge, GeVisitor)
+BINARY_FUNC(bitAnd, BitAndVisitor)
+BINARY_FUNC(bitOr, BitOrVisitor)
+BINARY_FUNC(bitXor, BitXorVisitor)
+BINARY_FUNC(shk, ShlVisitor)
+BINARY_FUNC(shr, ShrVisitor)
+
 } // namespace BinaryOp
 } // namespace bara

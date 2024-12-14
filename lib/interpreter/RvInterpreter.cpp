@@ -53,8 +53,6 @@ unique_ptr<Value> RvExprInterpreter::binaryOp(SMRange range, const Value *l,
     BINARY_OP(Mul, mul)
     BINARY_OP(Div, div)
     BINARY_OP(Mod, mod)
-    BINARY_OP(Eq, eq)
-    BINARY_OP(Ne, ne)
     BINARY_OP(Lt, lt)
     BINARY_OP(Le, le)
     BINARY_OP(Gt, gt)
@@ -67,11 +65,8 @@ unique_ptr<Value> RvExprInterpreter::binaryOp(SMRange range, const Value *l,
 
 #undef BINARY_OP
   default:
-    break;
+    llvm_unreachable("never used for binary operation");
   }
-  stmtInterpreter->report(
-      range, InterpretDiagnostic::error_invalid_operand_for_binary_operator,
-      operatorToString(op), l->toString(), r->toString());
   return nullptr;
 }
 
@@ -107,17 +102,129 @@ void RvExprInterpreter::visit(const LambdaExpression &expr) {
 }
 
 void RvExprInterpreter::visit(const BinaryExpression &expr) {
-  expr.getLhs()->accept(*this);
-  if (diag.hasError())
-    return;
-  auto lhs = std::move(result);
+  switch (expr.getOperator()) {
+  case Operator::And: {
+    expr.getLhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto lhs = std::move(result);
+    auto lhsBoolOpt = lhs->toBool();
+    if (!lhsBoolOpt) {
+      stmtInterpreter->report(
+          expr.getLhs()->getRange(),
+          InterpretDiagnostic::error_invalid_operand_for_binary_operator,
+          operatorToString(expr.getOperator()), lhs->toString());
+      return;
+    }
 
-  expr.getRhs()->accept(*this);
-  if (diag.hasError())
-    return;
-  auto rhs = std::move(result);
+    if (*lhsBoolOpt) {
+      result = BoolValue::create(false);
+      return;
+    }
 
-  result = binaryOp(expr.getRange(), lhs.get(), rhs.get(), expr.getOperator());
+    expr.getRhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto rhs = std::move(result);
+    auto rhsBoolOpt = rhs->toBool();
+    if (!rhsBoolOpt) {
+      stmtInterpreter->report(
+          expr.getRhs()->getRange(),
+          InterpretDiagnostic::error_invalid_operand_for_binary_operator,
+          operatorToString(expr.getOperator()), rhs->toString());
+      return;
+    }
+
+    result = BoolValue::create(*rhsBoolOpt);
+    return;
+  }
+  case Operator::Or: {
+    expr.getLhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto lhs = std::move(result);
+    auto lhsBoolOpt = lhs->toBool();
+    if (!lhsBoolOpt) {
+      stmtInterpreter->report(
+          expr.getLhs()->getRange(),
+          InterpretDiagnostic::error_invalid_operand_for_binary_operator,
+          operatorToString(expr.getOperator()), lhs->toString());
+      return;
+    }
+
+    if (!*lhsBoolOpt) {
+      result = BoolValue::create(true);
+      return;
+    }
+
+    expr.getRhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto rhs = std::move(result);
+    auto rhsBoolOpt = rhs->toBool();
+    if (!rhsBoolOpt) {
+      stmtInterpreter->report(
+          expr.getRhs()->getRange(),
+          InterpretDiagnostic::error_invalid_operand_for_binary_operator,
+          operatorToString(expr.getOperator()), rhs->toString());
+      return;
+    }
+
+    result = BoolValue::create(*rhsBoolOpt);
+    return;
+  }
+  case Operator::Eq: {
+    expr.getLhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto lhs = std::move(result);
+
+    expr.getRhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto rhs = std::move(result);
+
+    auto isSame = lhs->isEqual(lhs.get());
+    result = BoolValue::create(isSame);
+    return;
+  }
+  case Operator::Ne: {
+    expr.getLhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto lhs = std::move(result);
+
+    expr.getRhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto rhs = std::move(result);
+
+    auto isSame = lhs->isEqual(lhs.get());
+    result = BoolValue::create(!isSame);
+    return;
+  }
+  default:
+    expr.getLhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto lhs = std::move(result);
+
+    expr.getRhs()->accept(*this);
+    if (diag.hasError())
+      return;
+    auto rhs = std::move(result);
+
+    result =
+        binaryOp(expr.getRange(), lhs.get(), rhs.get(), expr.getOperator());
+    if (!result) {
+      stmtInterpreter->report(
+          expr.getRange(),
+          InterpretDiagnostic::error_invalid_operand_for_binary_operator,
+          operatorToString(expr.getOperator()), lhs->toString(),
+          rhs->toString());
+    }
+    return;
+  }
 }
 
 void RvExprInterpreter::visit(const UnaryExpression &expr) {
@@ -324,7 +431,7 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
       })
       .Case([&](BuiltinFunctionValue *builtinV) {
         auto func = builtinV->getFuncBody();
-        result = func(args, diag);
+        result = func(args, diag, expr.getRange());
       })
       .Default(
           [&](Value *) { llvm_unreachable("never used for call operation"); });

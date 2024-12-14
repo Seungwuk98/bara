@@ -10,19 +10,19 @@ template <typename BaseTy, bool IsConst = false>
 class Visitor {
 public:
   using Kind = BaseTy::KindTy;
+  using VisitorTy = Visitor<BaseTy, IsConst>;
   using VisitTy = std::conditional_t<IsConst, const BaseTy, BaseTy>;
+  using FunctionArrayTy = std::function<void(VisitorTy *, VisitTy *)> *;
 
   void visit(VisitTy &ast) {
-    visitFn[static_cast<uint16_t>(ast.getKind())](&ast);
+    visitFn[static_cast<uint16_t>(ast.getKind())](this, &ast);
   }
 
 protected:
-  void setVisitFn(Kind kind, function<void(VisitTy *)> fn) {
-    visitFn[static_cast<uint16_t>(kind)] = std::move(fn);
-  }
+  Visitor(FunctionArrayTy visitFn) : visitFn(visitFn) {}
 
 private:
-  array<function<void(VisitTy *)>, static_cast<uint16_t>(Kind::NUM)> visitFn;
+  FunctionArrayTy visitFn;
 };
 
 template <typename ConcreteType, typename BaseTy, bool IsConst,
@@ -31,16 +31,24 @@ class VisitorBase : public Visitor<BaseTy, IsConst> {
 public:
   using ParentTy = Visitor<BaseTy, IsConst>;
   using VisitTy = ParentTy::VisitTy;
+  using VisitorTy = ParentTy::VisitorTy;
+  using Kind = BaseTy::KindTy;
+  using FunctionArrayTy = ParentTy::FunctionArrayTy;
 
-  VisitorBase() {
-    (ParentTy::setVisitFn(KindMapper<VisitTypes>::value,
-                          [this](VisitTy *obj) {
-                            static_cast<ConcreteType *>(this)->visit(
-                                *obj->template cast<VisitTypes>());
-                          }),
-     ...);
+  VisitorBase() : Visitor<BaseTy, IsConst>(getVisitFn()) {}
+
+private:
+  FunctionArrayTy getVisitFn() {
+    static function<void(VisitorTy *, VisitTy *)> visitFn[static_cast<uint16_t>(
+        Kind::NUM)] = {[static_cast<uint16_t>(KindMapper<VisitTypes>::value)] =
+                           [](VisitorTy *visitor, VisitTy *ast) {
+                             static_cast<ConcreteType *>(visitor)->visit(
+                                 *ast->template cast<VisitTypes>());
+                           }...};
+    return visitFn;
   }
 };
+
 } // namespace bara::utils
 
 #endif // BARA_UTILS_VISITOR_BASE_H

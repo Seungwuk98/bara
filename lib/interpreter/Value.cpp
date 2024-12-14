@@ -7,25 +7,20 @@ namespace bara {
 
 class ValuePrintVisitor : public ConstValueVisitorBase<ValuePrintVisitor> {
 public:
-  void setPrinter(ASTPrinter *printer) { this->printer = printer; }
+  ValuePrintVisitor(ASTPrinter &printer) : printer(printer) {}
 
 #define VALUE(Name) void visit(const Name##Value &value);
 #include "bara/interpreter/Value.def"
 
 private:
-  ASTPrinter *printer;
+  ASTPrinter &printer;
 };
-
-llvm::ManagedStatic<ValuePrintVisitor> printVisitor;
 
 class ToBoolVisitor : public ConstValueVisitorBase<ToBoolVisitor> {
 public:
-  ToBoolVisitor() : value(nullptr), result(nullopt) {}
+  ToBoolVisitor() : result(nullopt) {}
 
-  void init(const Value *value) {
-    this->value = value;
-    result = nullopt;
-  }
+  void init() { result = nullopt; }
 
   std::optional<bool> getResult() const { return result; }
 
@@ -33,7 +28,6 @@ public:
 #include "bara/interpreter/Value.def"
 
 private:
-  const Value *value;
   optional<bool> result;
 };
 
@@ -41,12 +35,9 @@ llvm::ManagedStatic<ToBoolVisitor> toBoolVisitor;
 
 class CloneVisitor : public ConstValueVisitorBase<CloneVisitor> {
 public:
-  CloneVisitor() : value(nullptr), result(nullptr) {}
+  CloneVisitor() : result(nullptr) {}
 
-  void init(const Value *value) {
-    this->value = value;
-    result.reset();
-  }
+  void init() { result = nullptr; }
 
 #define VALUE(Name) void visit(const Name##Value &value);
 #include "bara/interpreter/Value.def"
@@ -54,29 +45,40 @@ public:
   std::unique_ptr<Value> getResult() { return std::move(result); }
 
 private:
-  const Value *value;
   std::unique_ptr<Value> result;
 };
 
 llvm::ManagedStatic<CloneVisitor> cloneVisitor;
 
+class ValueEqVisitor : public ConstValueVisitorBase<ValueEqVisitor> {
+public:
+  ValueEqVisitor(const Value *r) : r(r), result(false) {}
+
+#define VALUE(Name) void visit(const Name##Value &l);
+#include "bara/interpreter/Value.def"
+
+private:
+  const Value *r;
+  bool result;
+};
+
 string Value::toString() const {
   string str;
   raw_string_ostream os(str);
   ASTPrinter printer(os);
-  printVisitor->setPrinter(&printer);
-  accept(*printVisitor);
+  ValuePrintVisitor printVisitor(printer);
+  accept(printVisitor);
   return os.str();
 }
 
 unique_ptr<Value> Value::clone() const {
-  cloneVisitor->init(this);
+  cloneVisitor->init();
   accept(*cloneVisitor);
   return cloneVisitor->getResult();
 }
 
 optional<bool> Value::toBool() const {
-  toBoolVisitor->init(this);
+  toBoolVisitor->init();
   accept(*toBoolVisitor);
   return toBoolVisitor->getResult();
 }
@@ -91,7 +93,7 @@ unique_ptr<IntegerValue> IntegerValue::create(int64_t value) {
 }
 
 void ValuePrintVisitor::visit(const IntegerValue &value) {
-  *printer << value.getValue();
+  printer << value.getValue();
 }
 
 void ToBoolVisitor::visit(const IntegerValue &value) {
@@ -100,6 +102,13 @@ void ToBoolVisitor::visit(const IntegerValue &value) {
 
 void CloneVisitor::visit(const IntegerValue &value) {
   result = IntegerValue::create(value.getValue());
+}
+
+void ValueEqVisitor::visit(const IntegerValue &l) {
+  auto value = false;
+  if (const auto *intR = r->dyn_cast<IntegerValue>())
+    value = l.getValue() == intR->getValue();
+  result = value;
 }
 
 //===----------------------------------------------------------------------===//
@@ -114,11 +123,18 @@ unique_ptr<BoolValue> BoolValue::create(bool value) {
 void ToBoolVisitor::visit(const BoolValue &value) { result = value.getValue(); }
 
 void ValuePrintVisitor::visit(const BoolValue &value) {
-  *printer << (value.getValue() ? "true" : "false");
+  printer << (value.getValue() ? "true" : "false");
 }
 
 void CloneVisitor::visit(const BoolValue &value) {
   result = BoolValue::create(value.getValue());
+}
+
+void ValueEqVisitor::visit(const BoolValue &l) {
+  auto value = false;
+  if (const auto *boolR = r->dyn_cast<BoolValue>())
+    value = l.getValue() == boolR->getValue();
+  result = value;
 }
 
 //===----------------------------------------------------------------------===//
@@ -138,7 +154,7 @@ unique_ptr<FloatValue> FloatValue::create(const APFloat &value) {
 void ValuePrintVisitor::visit(const FloatValue &value) {
   SmallVector<char> buffer;
   value.getValue().toString(buffer);
-  *printer << buffer;
+  printer << buffer;
 }
 
 void ToBoolVisitor::visit(const FloatValue &value) {
@@ -151,6 +167,13 @@ void CloneVisitor::visit(const FloatValue &value) {
   result = FloatValue::create(StringRef{buffer.data(), buffer.size()});
 }
 
+void ValueEqVisitor::visit(const FloatValue &l) {
+  auto value = false;
+  if (const auto *floatR = r->dyn_cast<FloatValue>())
+    value = l.getValue() == floatR->getValue();
+  result = value;
+}
+
 //===----------------------------------------------------------------------===//
 /// StringValue
 //===----------------------------------------------------------------------===//
@@ -161,7 +184,7 @@ unique_ptr<StringValue> StringValue::create(StringRef value) {
 }
 
 void ValuePrintVisitor::visit(const StringValue &value) {
-  *printer << '"' << value.getValue() << '"';
+  printer << '"' << value.getValue() << '"';
 }
 
 void ToBoolVisitor::visit(const StringValue &value) {
@@ -170,6 +193,13 @@ void ToBoolVisitor::visit(const StringValue &value) {
 
 void CloneVisitor::visit(const StringValue &value) {
   result = StringValue::create(value.getValue());
+}
+
+void ValueEqVisitor::visit(const StringValue &l) {
+  auto value = false;
+  if (const auto *strR = r->dyn_cast<StringValue>())
+    value = l.getValue() == strR->getValue();
+  result = value;
 }
 
 //===----------------------------------------------------------------------===//
@@ -195,20 +225,27 @@ unique_ptr<ListValue> ListValue::create(VectorMemory *memory) {
 }
 
 void ValuePrintVisitor::visit(const ListValue &value) {
-  *printer << '[';
+  printer << '[';
   for (auto [idx, mem] : llvm::enumerate(*value.getVectorMemory())) {
     auto *view = mem->view();
-    *printer << view->toString();
+    printer << view->toString();
     if (idx != value.size() - 1)
-      *printer << ", ";
+      printer << ", ";
   }
-  *printer << ']';
+  printer << ']';
 }
 
 void ToBoolVisitor::visit(const ListValue &value) { result = !value.empty(); }
 
 void CloneVisitor::visit(const ListValue &value) {
   result = ListValue::create(value.getVectorMemory());
+}
+
+void ValueEqVisitor::visit(const ListValue &l) {
+  auto value = false;
+  if (const auto *listR = r->dyn_cast<ListValue>())
+    value = l.getVectorMemory() == listR->getVectorMemory();
+  result = value;
 }
 
 //===----------------------------------------------------------------------===//
@@ -221,22 +258,40 @@ unique_ptr<TupleValue> TupleValue::create(ArrayRef<ValueMemory *> mems) {
 }
 
 void ValuePrintVisitor::visit(const TupleValue &value) {
-  *printer << '(';
+  printer << '(';
   for (auto [idx, mem] : llvm::enumerate(value.getMemories())) {
     auto *view = mem->view();
-    *printer << view->toString();
+    printer << view->toString();
     if (idx != value.getMemories().size() - 1)
-      *printer << ", ";
+      printer << ", ";
   }
   if (value.size() == 1)
-    *printer << ',';
-  *printer << ')';
+    printer << ',';
+  printer << ')';
 }
 
 void ToBoolVisitor::visit(const TupleValue &value) { result = !value.empty(); }
 
 void CloneVisitor::visit(const TupleValue &value) {
   result = TupleValue::create(value.getMemories());
+}
+
+void ValueEqVisitor::visit(const TupleValue &l) {
+  auto value = false;
+  if (const auto *tupleR = r->dyn_cast<TupleValue>()) {
+    if (l.size() == tupleR->size()) {
+      value = true;
+      for (auto idx = 0; idx < l.size(); ++idx) {
+        auto *lMem = l.getElement(idx);
+        auto *rMem = tupleR->getElement(idx);
+        if (lMem->view()->isEqual(rMem->view())) {
+          value = false;
+          break;
+        }
+      }
+    }
+  }
+  result = value;
 }
 
 //===----------------------------------------------------------------------===//
@@ -248,11 +303,13 @@ unique_ptr<NilValue> NilValue::create() {
   return unique_ptr<NilValue>(mem);
 }
 
-void ValuePrintVisitor::visit(const NilValue &value) { *printer << "nil"; }
+void ValuePrintVisitor::visit(const NilValue &value) { printer << "nil"; }
 
 void ToBoolVisitor::visit(const NilValue &value) { result = false; }
 
 void CloneVisitor::visit(const NilValue &value) { result = NilValue::create(); }
+
+void ValueEqVisitor::visit(const NilValue &l) { result = r->isa<NilValue>(); }
 
 //===----------------------------------------------------------------------===//
 /// FunctionValue
@@ -265,12 +322,12 @@ FunctionValue::create(const Environment &env, const FunctionDeclaration *decl) {
 }
 
 void ValuePrintVisitor::visit(const FunctionValue &value) {
-  *printer << "<function>";
+  printer << "<function>";
   {
-    ASTPrinter::AddIndentScope scope(*printer);
-    *printer << value.getDeclaration()->toString();
+    ASTPrinter::AddIndentScope scope(printer);
+    printer << value.getDeclaration()->toString();
   }
-  printer->ln();
+  printer.ln();
 }
 
 void ToBoolVisitor::visit(const FunctionValue &value) { result = nullopt; }
@@ -278,6 +335,13 @@ void ToBoolVisitor::visit(const FunctionValue &value) { result = nullopt; }
 void CloneVisitor::visit(const FunctionValue &value) {
   result =
       FunctionValue::create(value.getEnvironment(), value.getDeclaration());
+}
+
+void ValueEqVisitor::visit(const FunctionValue &l) {
+  auto value = false;
+  if (const auto *funcR = r->dyn_cast<FunctionValue>())
+    value = l.getDeclaration() == funcR->getDeclaration();
+  result = value;
 }
 
 //===----------------------------------------------------------------------===//
@@ -291,18 +355,25 @@ unique_ptr<LambdaValue> LambdaValue::create(const Environment &env,
 }
 
 void ValuePrintVisitor::visit(const LambdaValue &value) {
-  *printer << "<lambda>";
+  printer << "<lambda>";
   {
-    ASTPrinter::AddIndentScope scope(*printer);
-    *printer << value.getExpression()->toString();
+    ASTPrinter::AddIndentScope scope(printer);
+    printer << value.getExpression()->toString();
   }
-  printer->ln();
+  printer.ln();
 }
 
 void ToBoolVisitor::visit(const LambdaValue &value) { result = nullopt; }
 
 void CloneVisitor::visit(const LambdaValue &value) {
   result = LambdaValue::create(value.getEnvironment(), value.getExpression());
+}
+
+void ValueEqVisitor::visit(const LambdaValue &l) {
+  auto value = false;
+  if (const auto *lambdaR = r->dyn_cast<LambdaValue>())
+    value = l.getExpression() == lambdaR->getExpression();
+  result = value;
 }
 
 //===----------------------------------------------------------------------===//
@@ -317,7 +388,7 @@ unique_ptr<BuiltinFunctionValue> BuiltinFunctionValue::create(StringRef name,
 }
 
 void ValuePrintVisitor::visit(const BuiltinFunctionValue &value) {
-  *printer << "<builtin function" << '\'' << value.getName() << "'>";
+  printer << "<builtin function" << '\'' << value.getName() << "'>";
 }
 
 void ToBoolVisitor::visit(const BuiltinFunctionValue &value) {
@@ -327,5 +398,12 @@ void ToBoolVisitor::visit(const BuiltinFunctionValue &value) {
 void CloneVisitor::visit(const BuiltinFunctionValue &value) {
   result = BuiltinFunctionValue::create(value.getName(), value.getHelp(),
                                         value.getFuncBody());
+}
+
+void ValueEqVisitor::visit(const BuiltinFunctionValue &l) {
+  auto value = false;
+  if (const auto *builtinR = r->dyn_cast<BuiltinFunctionValue>())
+    value = l.getName() == builtinR->getName();
+  result = value;
 }
 } // namespace bara

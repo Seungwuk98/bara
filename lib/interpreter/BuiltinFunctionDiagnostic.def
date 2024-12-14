@@ -1,0 +1,10 @@
+#ifndef DIAG
+#define DIAG(Name, Msg, Error)
+#endif
+
+DIAG(
+    error_invalid_argument_size,
+    "Invalid argument size for builtin function '{0}'. expected({1}), got({2})",
+    Error)
+
+#undef DIAG
