@@ -8,6 +8,7 @@ add_library(
   LvInterpreter.cpp
   BinaryOperations.cpp
   BuiltinFunctions.cpp
+  Environment.cpp
 )
 
 target_link_libraries(

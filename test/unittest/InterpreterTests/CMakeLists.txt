@@ -1,0 +1,10 @@
+add_unit_test(
+  InterpreterTests
+  LiteralTests.cpp
+  PRIVATE
+  BaraAST
+  BaraContext 
+  BaraParser 
+  BaraInterpreter
+  ${llvm_libs}
+)

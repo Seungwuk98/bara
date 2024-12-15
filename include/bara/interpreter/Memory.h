@@ -67,6 +67,8 @@ public:
     return llvm::dyn_cast<U>(this);
   }
 
+  void accept(MemoryVisitor &visitor);
+
   MemoryKind getKind() const { return kind; }
 
   bool assign(Value *value);

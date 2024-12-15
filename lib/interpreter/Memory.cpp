@@ -7,10 +7,7 @@ namespace bara {
 
 class AssignVisitor : public MemoryVisitorBase<AssignVisitor> {
 public:
-  void init(Value *value) {
-    this->value = value;
-    fail = false;
-  }
+  AssignVisitor(Value *value) : value(value) {}
 
   bool getFail() const { return fail; }
 
@@ -21,6 +18,14 @@ private:
   Value *value;
   bool fail = false;
 };
+
+void Memory::accept(MemoryVisitor &visitor) { visitor.visit(*this); }
+
+bool Memory::assign(Value *value) {
+  AssignVisitor visitor(value);
+  accept(visitor);
+  return !visitor.getFail();
+}
 
 ImmutableMemory::~ImmutableMemory() = default;
 

@@ -1,33 +1,30 @@
 #include "bara/context/MemoryContext.h"
+#include "bara/interpreter/Memory.h"
 #include "bara/interpreter/Value.h"
 
 namespace bara {
 namespace BuiltinFn {
 
-extern unique_ptr<Value> print(ArrayRef<unique_ptr<Value>> args,
-                               Diagnostic &diag);
-extern unique_ptr<Value> help(ArrayRef<unique_ptr<Value>> args,
-                              Diagnostic &diag);
-extern unique_ptr<Value> push(ArrayRef<unique_ptr<Value>> args,
-                              Diagnostic &diag);
-extern unique_ptr<Value> pop(ArrayRef<unique_ptr<Value>> args,
-                             Diagnostic &diag);
-extern unique_ptr<Value> str(ArrayRef<unique_ptr<Value>> args,
-                             Diagnostic &diag);
-extern unique_ptr<Value> len(ArrayRef<unique_ptr<Value>> args,
-                             Diagnostic &diag);
-extern unique_ptr<Value> intCast(ArrayRef<unique_ptr<Value>> args,
-                                 Diagnostic &diag);
-extern unique_ptr<Value> floatCast(ArrayRef<unique_ptr<Value>> args,
-                                   Diagnostic &diag);
-extern unique_ptr<Value> boolCast(ArrayRef<unique_ptr<Value>> args,
-                                  Diagnostic &diag);
-extern unique_ptr<Value> type(ArrayRef<unique_ptr<Value>> args,
-                              Diagnostic &diag);
+#define BUILTIN_FUNC(Name, Identifier, Help)                                   \
+  extern unique_ptr<Value> Name(ArrayRef<unique_ptr<Value>>, Diagnostic &,     \
+                                SMRange);
+#include "bara/interpreter/BuiltinFunctions.def"
 
 } // namespace BuiltinFn
 
-MemoryContext::MemoryContext() {}
+MemoryContext::MemoryContext() {
+#define BUILTIN_FUNC(Name, Identifier, Help)                                   \
+  do {                                                                         \
+    auto builtinFn =                                                           \
+        BuiltinFunctionValue::create(Identifier, Help, BuiltinFn::Name);       \
+                                                                               \
+    auto memory = ImmutableMemory::create(this, std::move(builtinFn));         \
+    auto inserted = builtinFuncTable.try_emplace(Identifier, memory).second;   \
+    assert(inserted);                                                          \
+    (void)inserted;                                                            \
+  } while (false);
+#include "bara/interpreter/BuiltinFunctions.def"
+}
 
 MemoryContext::~MemoryContext() {
   for (const auto &[ptr, destructFn] : allocations)

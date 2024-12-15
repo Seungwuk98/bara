@@ -228,12 +228,12 @@ void Lexer::lexString() {
     }
     skip();
   }
-  skip();
   if (peek() == eof) {
     report(createRange(), LexDiagnostic::error_unclosed_string);
     kind = Token::Tok_Unknown;
     return;
   }
+  skip();
   kind = Token::Tok_StringLiteral;
 }
 

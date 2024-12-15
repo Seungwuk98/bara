@@ -16,6 +16,8 @@ public:
 
   raw_ostream &getOS() { return os; }
 
+  llvm::SourceMgr &getSourceMgr() { return srcMgr; }
+
   void report(SMRange range, llvm::SourceMgr::DiagKind kind,
               StringRef message) {
     srcMgr.PrintMessage(os, range.Start, kind, message, {range});

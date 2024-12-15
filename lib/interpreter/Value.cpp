@@ -57,10 +57,14 @@ public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
 
+  bool getResult() const { return result; }
+
 private:
   const Value *r;
   bool result;
 };
+
+void Value::accept(ConstValueVisitor &visitor) const { visitor.visit(*this); }
 
 string Value::toString() const {
   string str;
@@ -81,6 +85,12 @@ optional<bool> Value::toBool() const {
   toBoolVisitor->init();
   accept(*toBoolVisitor);
   return toBoolVisitor->getResult();
+}
+
+bool Value::isEqual(const Value *other) const {
+  ValueEqVisitor visitor(other);
+  accept(visitor);
+  return visitor.getResult();
 }
 
 //===----------------------------------------------------------------------===//
@@ -349,7 +359,7 @@ void ValueEqVisitor::visit(const FunctionValue &l) {
 //===----------------------------------------------------------------------===//
 
 unique_ptr<LambdaValue> LambdaValue::create(const Environment &env,
-                                            LambdaExpression *decl) {
+                                            const LambdaExpression *decl) {
   auto *mem = new LambdaValue(env, decl);
   return unique_ptr<LambdaValue>(mem);
 }

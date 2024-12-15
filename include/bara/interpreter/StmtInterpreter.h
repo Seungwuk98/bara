@@ -83,6 +83,9 @@ private:
   unique_ptr<Value> returnValue = nullptr;
 };
 
+void interpret(const Program *program, MemoryContext *context,
+               Diagnostic &diag);
+
 } // namespace bara
 
 #endif // BARA_INTERPRETER_H

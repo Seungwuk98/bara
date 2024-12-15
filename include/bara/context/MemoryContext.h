@@ -22,7 +22,9 @@ public:
     return ptr;
   }
 
-  DenseMap<StringRef, ImmutableMemory *> *getBuiltinFuncTable();
+  const DenseMap<StringRef, ImmutableMemory *> *getBuiltinFuncTable() const {
+    return &builtinFuncTable;
+  }
 
 private:
   vector<pair<void *, function<void(void *)>>> allocations;

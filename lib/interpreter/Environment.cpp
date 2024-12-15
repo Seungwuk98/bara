@@ -1,4 +1,5 @@
 #include "bara/interpreter/Environment.h"
+#include "bara/interpreter/Value.h"
 
 namespace bara {
 

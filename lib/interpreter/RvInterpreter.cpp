@@ -94,11 +94,26 @@ void RvExprInterpreter::visit(const IndexExpression &expr) {
 }
 
 void RvExprInterpreter::visit(const MatchExpression &expr) {
-  llvm_unreachable("TODO");
+  expr.getExpr()->accept(*this);
+  if (diag.hasError())
+    return;
+  auto value = std::move(result);
+
+  for (const auto &[pattern, expr] : expr.getMatchCases()) {
+    Environment::Scope scope(getEnv());
+    if (stmtInterpreter->matchPattern(*pattern, value.get())) {
+      expr->accept(*this);
+      return;
+    }
+  }
+
+  stmtInterpreter->report(expr.getRange(),
+                          InterpretDiagnostic::error_unmatched_pattern,
+                          value->toString());
 }
 
 void RvExprInterpreter::visit(const LambdaExpression &expr) {
-  llvm_unreachable("TODO");
+  result = LambdaValue::create(getEnv(), &expr);
 }
 
 void RvExprInterpreter::visit(const BinaryExpression &expr) {
@@ -532,7 +547,7 @@ void RvExprInterpreter::visit(const StringLiteral &expr) {
         os << ch;
       }
     } else {
-      os << buffer[pos];
+      os << ch;
     }
   }
 

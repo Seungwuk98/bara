@@ -761,7 +761,7 @@ void ASTPrintVisitor::visit(const MatchExpression &ast) {
   printer << " {";
   {
     ASTPrinter::AddIndentScope scope(printer);
-    for (auto [idx, matchCase] : llvm::enumerate(ast.getMatchCases())) {
+    for (auto matchCase : ast.getMatchCases()) {
       printer.ln() << '\\';
       matchCase.first->accept(*this);
       printer << " => ";

@@ -222,7 +222,7 @@ private:
 };
 
 class LambdaValue final : public Value {
-  LambdaValue(Environment env, LambdaExpression *expr)
+  LambdaValue(Environment env, const LambdaExpression *expr)
       : Value(ValueKind::Lambda), env(env), expr(expr) {}
 
 public:
@@ -231,14 +231,14 @@ public:
   }
 
   static unique_ptr<LambdaValue> create(const Environment &env,
-                                        LambdaExpression *expr);
+                                        const LambdaExpression *expr);
 
   const Environment &getEnvironment() const { return env; }
-  LambdaExpression *getExpression() const { return expr; }
+  const LambdaExpression *getExpression() const { return expr; }
 
 private:
   Environment env;
-  LambdaExpression *expr;
+  const LambdaExpression *expr;
 };
 
 class BuiltinFunctionValue final : public Value {

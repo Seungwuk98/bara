@@ -8,7 +8,7 @@ namespace bara {
 
 class Environment {
 public:
-  Environment(DenseMap<StringRef, ImmutableMemory *> *builtinFuncTable)
+  Environment(const DenseMap<StringRef, ImmutableMemory *> *builtinFuncTable)
       : builtinFuncTable(builtinFuncTable) {}
 
   Memory *lookup(StringRef name) const;
@@ -25,7 +25,7 @@ public:
   };
 
 private:
-  DenseMap<StringRef, ImmutableMemory *> *builtinFuncTable;
+  const DenseMap<StringRef, ImmutableMemory *> *builtinFuncTable;
   SmallVector<DenseMap<StringRef, Memory *>> scopes;
 };
 } // namespace bara

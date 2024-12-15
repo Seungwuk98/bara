@@ -13,3 +13,4 @@ endfunction()
 
 add_subdirectory(ASTTests)
 add_subdirectory(ParserTests)
+add_subdirectory(InterpreterTests)

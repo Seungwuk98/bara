@@ -7,6 +7,12 @@
 
 namespace bara {
 
+void interpret(const Program *program, MemoryContext *context,
+               Diagnostic &diag) {
+  StmtInterpreter interpreter(context, diag);
+  program->accept(interpreter);
+}
+
 StmtInterpreter::StmtInterpreter(MemoryContext *context, Diagnostic &diag)
     : context(context), diag(diag), env(context->getBuiltinFuncTable()),
       rvInterpreter(new RvExprInterpreter(this)),
@@ -15,6 +21,16 @@ StmtInterpreter::StmtInterpreter(MemoryContext *context, Diagnostic &diag)
 StmtInterpreter::~StmtInterpreter() {
   delete rvInterpreter;
   delete lvInterpreter;
+}
+
+Memory *StmtInterpreter::lvInterpret(const Expression &ast) {
+  ast.accept(*lvInterpreter);
+  return lvInterpreter->getResult();
+}
+
+unique_ptr<Value> StmtInterpreter::rvInterpret(const Expression &ast) {
+  ast.accept(*rvInterpreter);
+  return rvInterpreter->getResult();
 }
 
 void StmtInterpreter::visit(const Program &stmt) {
@@ -339,5 +355,23 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
         assert(pattern->isa<NilPattern>());
         return value->isa<NilValue>();
       });
+}
+
+static const char *interpreterDiagMsgs[] = {
+#define DIAG(Name, Msg, Error) Msg,
+#include "bara/interpreter/InterpreterDiagnostic.def"
+};
+
+static llvm::SourceMgr::DiagKind interpreterDiagKinds[] = {
+#define DIAG(Name, Msg, Error) llvm::SourceMgr::DK_##Error,
+#include "bara/interpreter/InterpreterDiagnostic.def"
+};
+
+const char *StmtInterpreter::InterpretDiagnostic::getMessage(Diag kind) {
+  return interpreterDiagMsgs[kind];
+}
+llvm::SourceMgr::DiagKind
+StmtInterpreter::InterpretDiagnostic::getDiagKind(Diag kind) {
+  return interpreterDiagKinds[kind];
 }
 } // namespace bara

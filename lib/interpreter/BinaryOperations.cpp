@@ -93,6 +93,12 @@ void AddVisitor::visit(const FloatValue &l) {
                .Case([&](const FloatValue *r) { return add(&l, r); })
                .Default(null);
 }
+void AddVisitor::visit(const StringValue &l) {
+  if (const auto *strR = r->dyn_cast<StringValue>())
+    result = add(&l, strR);
+  else
+    result = nullptr;
+}
 void AddVisitor::visit(const ListValue &l) {
   if (const auto *listL = r->dyn_cast<ListValue>())
     result = add(listL, &l);
@@ -149,6 +155,7 @@ void SubVisitor::visit(const FloatValue &l) {
                })
                .Default(null);
 }
+void SubVisitor::visit(const StringValue &l) { result = nullptr; }
 void SubVisitor::visit(const ListValue &l) { result = nullptr; }
 void SubVisitor::visit(const TupleValue &l) { result = nullptr; }
 void SubVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -233,6 +240,12 @@ void MulVisitor::visit(const FloatValue &l) {
                .Case([&](const FloatValue *r) { return mul(&l, r); })
                .Default(null);
 }
+void MulVisitor::visit(const StringValue &l) {
+  if (const IntegerValue *intV = r->dyn_cast<IntegerValue>())
+    result = mul(intV, &l);
+  else
+    result = nullptr;
+}
 void MulVisitor::visit(const ListValue &l) {
   if (const IntegerValue *intV = r->dyn_cast<IntegerValue>())
     result = mul(intV, &l);
@@ -280,6 +293,7 @@ void DivVisitor::visit(const FloatValue &l) {
                })
                .Default(null);
 }
+void DivVisitor::visit(const StringValue &l) { result = nullptr; }
 void DivVisitor::visit(const ListValue &l) { result = nullptr; }
 void DivVisitor::visit(const TupleValue &l) { result = nullptr; }
 void DivVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -303,6 +317,7 @@ void ModVisitor::visit(const IntegerValue &l) {
 
 void ModVisitor::visit(const BoolValue &l) { result = nullptr; }
 void ModVisitor::visit(const FloatValue &l) { result = nullptr; }
+void ModVisitor::visit(const StringValue &l) { result = nullptr; }
 void ModVisitor::visit(const ListValue &l) { result = nullptr; }
 void ModVisitor::visit(const TupleValue &l) { result = nullptr; }
 void ModVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -341,6 +356,13 @@ void LtVisitor::visit(const FloatValue &l) {
                  return BoolValue::create(value);
                })
                .Default(null);
+}
+void LtVisitor::visit(const StringValue &l) {
+  if (const auto *strR = r->dyn_cast<StringValue>()) {
+    auto value = l.getValue() < strR->getValue();
+    result = BoolValue::create(value);
+  } else
+    result = nullptr;
 }
 void LtVisitor::visit(const ListValue &l) { result = nullptr; }
 void LtVisitor::visit(const TupleValue &l) { result = nullptr; }
@@ -381,6 +403,13 @@ void LeVisitor::visit(const FloatValue &l) {
                })
                .Default(null);
 }
+void LeVisitor::visit(const StringValue &l) {
+  if (const auto *strR = r->dyn_cast<StringValue>()) {
+    auto value = l.getValue() <= strR->getValue();
+    result = BoolValue::create(value);
+  } else
+    result = nullptr;
+}
 void LeVisitor::visit(const ListValue &l) { result = nullptr; }
 void LeVisitor::visit(const TupleValue &l) { result = nullptr; }
 void LeVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -419,6 +448,13 @@ void GtVisitor::visit(const FloatValue &l) {
                  return BoolValue::create(value);
                })
                .Default(null);
+}
+void GtVisitor::visit(const StringValue &l) {
+  if (const auto *strR = r->dyn_cast<StringValue>()) {
+    auto value = l.getValue() > strR->getValue();
+    result = BoolValue::create(value);
+  } else
+    result = nullptr;
 }
 void GtVisitor::visit(const ListValue &l) { result = nullptr; }
 void GtVisitor::visit(const TupleValue &l) { result = nullptr; }
@@ -459,6 +495,13 @@ void GeVisitor::visit(const FloatValue &l) {
                })
                .Default(null);
 }
+void GeVisitor::visit(const StringValue &l) {
+  if (const auto *strR = r->dyn_cast<StringValue>()) {
+    auto value = l.getValue() >= strR->getValue();
+    result = BoolValue::create(value);
+  } else
+    result = nullptr;
+}
 void GeVisitor::visit(const ListValue &l) { result = nullptr; }
 void GeVisitor::visit(const TupleValue &l) { result = nullptr; }
 void GeVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -488,17 +531,18 @@ static unique_ptr<Value> bitAnd(const BoolValue *l, const BoolValue *r) {
 } // namespace
 void BitAndVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) { bitAnd(&l, r); })
-               .Case([&](const BoolValue *r) { bitAnd(&l, r); })
+               .Case([&](const IntegerValue *r) { return bitAnd(&l, r); })
+               .Case([&](const BoolValue *r) { return bitAnd(&l, r); })
                .Default(null);
 }
 void BitAndVisitor::visit(const BoolValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) { bitAnd(r, &l); })
-               .Case([&](const BoolValue *r) { bitAnd(&l, r); })
+               .Case([&](const IntegerValue *r) { return bitAnd(r, &l); })
+               .Case([&](const BoolValue *r) { return bitAnd(&l, r); })
                .Default(null);
 }
 void BitAndVisitor::visit(const FloatValue &l) { result = nullptr; }
+void BitAndVisitor::visit(const StringValue &l) { result = nullptr; }
 void BitAndVisitor::visit(const ListValue &l) { result = nullptr; }
 void BitAndVisitor::visit(const TupleValue &l) { result = nullptr; }
 void BitAndVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -528,17 +572,18 @@ static unique_ptr<Value> bitOr(const BoolValue *l, const BoolValue *r) {
 
 void BitOrVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) { bitOr(&l, r); })
-               .Case([&](const BoolValue *r) { bitOr(&l, r); })
+               .Case([&](const IntegerValue *r) { return bitOr(&l, r); })
+               .Case([&](const BoolValue *r) { return bitOr(&l, r); })
                .Default(null);
 }
 void BitOrVisitor::visit(const BoolValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) { bitOr(r, &l); })
-               .Case([&](const BoolValue *r) { bitOr(&l, r); })
+               .Case([&](const IntegerValue *r) { return bitOr(r, &l); })
+               .Case([&](const BoolValue *r) { return bitOr(&l, r); })
                .Default(null);
 }
 void BitOrVisitor::visit(const FloatValue &l) { result = nullptr; }
+void BitOrVisitor::visit(const StringValue &l) { result = nullptr; }
 void BitOrVisitor::visit(const ListValue &l) { result = nullptr; }
 void BitOrVisitor::visit(const TupleValue &l) { result = nullptr; }
 void BitOrVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -568,17 +613,18 @@ static unique_ptr<Value> bitXor(const BoolValue *l, const BoolValue *r) {
 } // namespace
 void BitXorVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) { bitXor(&l, r); })
-               .Case([&](const BoolValue *r) { bitXor(&l, r); })
+               .Case([&](const IntegerValue *r) { return bitXor(&l, r); })
+               .Case([&](const BoolValue *r) { return bitXor(&l, r); })
                .Default(null);
 }
 void BitXorVisitor::visit(const BoolValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) { bitXor(r, &l); })
-               .Case([&](const BoolValue *r) { bitXor(&l, r); })
+               .Case([&](const IntegerValue *r) { return bitXor(r, &l); })
+               .Case([&](const BoolValue *r) { return bitXor(&l, r); })
                .Default(null);
 }
 void BitXorVisitor::visit(const FloatValue &l) { result = nullptr; }
+void BitXorVisitor::visit(const StringValue &l) { result = nullptr; }
 void BitXorVisitor::visit(const ListValue &l) { result = nullptr; }
 void BitXorVisitor::visit(const TupleValue &l) { result = nullptr; }
 void BitXorVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -620,6 +666,7 @@ void ShlVisitor::visit(const BoolValue &l) {
                .Default(null);
 }
 void ShlVisitor::visit(const FloatValue &l) { result = nullptr; }
+void ShlVisitor::visit(const StringValue &l) { result = nullptr; }
 void ShlVisitor::visit(const ListValue &l) { result = nullptr; }
 void ShlVisitor::visit(const TupleValue &l) { result = nullptr; }
 void ShlVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -661,6 +708,7 @@ void ShrVisitor::visit(const BoolValue &l) {
                .Default(null);
 }
 void ShrVisitor::visit(const FloatValue &l) { result = nullptr; }
+void ShrVisitor::visit(const StringValue &l) { result = nullptr; }
 void ShrVisitor::visit(const ListValue &l) { result = nullptr; }
 void ShrVisitor::visit(const TupleValue &l) { result = nullptr; }
 void ShrVisitor::visit(const NilValue &l) { result = nullptr; }
@@ -688,7 +736,7 @@ BINARY_FUNC(ge, GeVisitor)
 BINARY_FUNC(bitAnd, BitAndVisitor)
 BINARY_FUNC(bitOr, BitOrVisitor)
 BINARY_FUNC(bitXor, BitXorVisitor)
-BINARY_FUNC(shk, ShlVisitor)
+BINARY_FUNC(shl, ShlVisitor)
 BINARY_FUNC(shr, ShrVisitor)
 
 } // namespace BinaryOp

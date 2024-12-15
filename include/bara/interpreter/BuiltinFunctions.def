@@ -1,0 +1,51 @@
+#ifndef BUILTIN_FUNC
+#define BUILTIN_FUNC(FuncName, identifier, Help)
+#endif
+
+BUILTIN_FUNC(print, "print", R"(<print>
+usage: print(args...)
+print arguments to stdout which is separated by space
+)")
+BUILTIN_FUNC(help, "help", R"(<help>
+usage: help(builtinFucntion)
+print help message for builtin function
+)")
+BUILTIN_FUNC(push, "push", R"(<push>
+usage: push(list, value)
+push value to list
+)")
+BUILTIN_FUNC(pop, "pop", R"(<pop>
+usage: pop(list)
+pop value from list
+)")
+BUILTIN_FUNC(str, "str", R"(<str>
+usage: str(value)
+convert value to string
+)")
+BUILTIN_FUNC(format, "format", R"(<format>
+usage: format(string, args...)
+format string with arguments
+replace '{}' in string with arguments in order
+)")
+BUILTIN_FUNC(len, "len", R"(<len>
+usage: len(value)
+get length of list or tuple
+)")
+BUILTIN_FUNC(intCast, "int", R"(<int>
+usage: int(value)
+convert value to integer
+)")
+BUILTIN_FUNC(floatCast, "float", R"(<float>
+usage: float(value)
+convert value to float
+)")
+BUILTIN_FUNC(boolCast, "bool", R"(<bool>
+usage: bool(value)
+convert value to boolean
+)")
+BUILTIN_FUNC(type, "type", R"(<type>
+usage: type(value)
+get type of value to string
+)")
+
+#undef BUILTIN_FUNC
