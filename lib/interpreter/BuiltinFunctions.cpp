@@ -1,4 +1,5 @@
 #include "bara/diagnostic/Diagnostic.h"
+#include "bara/interpreter/StmtInterpreter.h"
 #include "bara/interpreter/Value.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/FloatingPointMode.h"
@@ -36,11 +37,11 @@ void report(SMRange range, Diagnostic &diag, Diag kind, Args &&...args) {
 
 DECL(print) {
   for (const auto &[idx, arg] : llvm::enumerate(args)) {
-    outs() << arg->toString();
+    getPrintOS() << arg->toString();
     if (idx != args.size() - 1)
-      outs() << " ";
+      getPrintOS() << " ";
   }
-  outs() << "\n";
+  getPrintOS() << "\n";
   return NilValue::create();
 }
 

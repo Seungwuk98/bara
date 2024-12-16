@@ -25,7 +25,7 @@ bool runTest(
   auto tokens = lexer.getTokens();
   if (tokens.size() != expect.size()) {
     for (auto token : tokens)
-      llvm::errs() << token->toString() << "\n";
+      errs() << token->toString() << "\n";
     return false;
   }
 

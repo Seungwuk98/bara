@@ -27,6 +27,7 @@ public:
 
   Memory *lvInterpret(const Expression &ast);
   unique_ptr<Value> rvInterpret(const Expression &ast);
+  Environment &getEnv() { return env; }
 
 private:
   struct InterpretDiagnostic {
@@ -85,6 +86,9 @@ private:
 
 void interpret(const Program *program, MemoryContext *context,
                Diagnostic &diag);
+
+void setPrintOS(raw_ostream &os);
+raw_ostream &getPrintOS();
 
 } // namespace bara
 

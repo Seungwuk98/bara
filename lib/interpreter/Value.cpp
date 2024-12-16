@@ -262,17 +262,16 @@ void ValueEqVisitor::visit(const ListValue &l) {
 /// TupleValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<TupleValue> TupleValue::create(ArrayRef<ValueMemory *> mems) {
-  auto *mem = new TupleValue(mems);
+unique_ptr<TupleValue> TupleValue::create(SmallVector<unique_ptr<Value>> mems) {
+  auto *mem = new TupleValue(std::move(mems));
   return unique_ptr<TupleValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const TupleValue &value) {
   printer << '(';
-  for (auto [idx, mem] : llvm::enumerate(value.getMemories())) {
-    auto *view = mem->view();
-    printer << view->toString();
-    if (idx != value.getMemories().size() - 1)
+  for (auto [idx, element] : llvm::enumerate(value.getValues())) {
+    printer << element->toString();
+    if (idx != value.getValues().size() - 1)
       printer << ", ";
   }
   if (value.size() == 1)
@@ -283,7 +282,9 @@ void ValuePrintVisitor::visit(const TupleValue &value) {
 void ToBoolVisitor::visit(const TupleValue &value) { result = !value.empty(); }
 
 void CloneVisitor::visit(const TupleValue &value) {
-  result = TupleValue::create(value.getMemories());
+  auto values = llvm::map_to_vector(
+      value.getValues(), [](const auto &element) { return element->clone(); });
+  result = TupleValue::create(std::move(values));
 }
 
 void ValueEqVisitor::visit(const TupleValue &l) {
@@ -292,9 +293,9 @@ void ValueEqVisitor::visit(const TupleValue &l) {
     if (l.size() == tupleR->size()) {
       value = true;
       for (auto idx = 0; idx < l.size(); ++idx) {
-        auto *lMem = l.getElement(idx);
-        auto *rMem = tupleR->getElement(idx);
-        if (lMem->view()->isEqual(rMem->view())) {
+        auto *lV = l.getElement(idx);
+        auto *rV = tupleR->getElement(idx);
+        if (lV->isEqual(rV)) {
           value = false;
           break;
         }

@@ -100,8 +100,8 @@ void AddVisitor::visit(const StringValue &l) {
     result = nullptr;
 }
 void AddVisitor::visit(const ListValue &l) {
-  if (const auto *listL = r->dyn_cast<ListValue>())
-    result = add(listL, &l);
+  if (const auto *listR = r->dyn_cast<ListValue>())
+    result = add(&l, listR);
   else
     result = nullptr;
 }
@@ -309,6 +309,8 @@ public:
 
 void ModVisitor::visit(const IntegerValue &l) {
   if (const IntegerValue *intR = r->dyn_cast<IntegerValue>()) {
+    if (intR->getValue() == 0)
+      result = nullptr;
     auto value = l.getValue() % intR->getValue();
     result = IntegerValue::create(value);
   } else

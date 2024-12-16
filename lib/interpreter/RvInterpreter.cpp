@@ -5,6 +5,7 @@
 #include "bara/interpreter/Value.h"
 #include <limits>
 #include <llvm-18/llvm/ADT/TypeSwitch.h>
+#include <variant>
 
 namespace bara {
 
@@ -75,21 +76,30 @@ void RvExprInterpreter::visit(const IdentifierExpression &expr) {
   if (diag.hasError())
     return;
 
-  auto *valueMemory = memory->cast<ValueMemory>();
-  result = valueMemory->view()->clone();
+  if (auto *valueMemory = memory->dyn_cast<ValueMemory>())
+    result = valueMemory->view()->clone();
+  else {
+    auto immutMemory = memory->cast<ImmutableMemory>();
+    result = immutMemory->view()->clone();
+  }
 }
 
 void RvExprInterpreter::visit(const IndexExpression &expr) {
-  auto memoryOrChar = interpretIndex(&expr);
+  auto memoryOrValue = interpretIndex(&expr);
   if (diag.hasError())
     return;
 
-  if (std::holds_alternative<char>(memoryOrChar)) {
-    result = StringValue::create({&std::get<char>(memoryOrChar), 1});
+  if (std::holds_alternative<char>(memoryOrValue)) {
+    result = StringValue::create({&std::get<char>(memoryOrValue), 1});
     return;
   }
 
-  auto *valueMemory = std::get<Memory *>(memoryOrChar)->cast<ValueMemory>();
+  if (std::holds_alternative<unique_ptr<Value>>(memoryOrValue)) {
+    result = std::move(std::get<unique_ptr<Value>>(memoryOrValue));
+    return;
+  }
+
+  auto *valueMemory = std::get<Memory *>(memoryOrValue)->cast<ValueMemory>();
   result = valueMemory->view()->clone();
 }
 
@@ -113,7 +123,8 @@ void RvExprInterpreter::visit(const MatchExpression &expr) {
 }
 
 void RvExprInterpreter::visit(const LambdaExpression &expr) {
-  result = LambdaValue::create(getEnv(), &expr);
+  auto capturedEnv = getEnv().capture(context);
+  result = LambdaValue::create(capturedEnv, &expr);
 }
 
 void RvExprInterpreter::visit(const BinaryExpression &expr) {
@@ -361,13 +372,15 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
           return;
         }
 
-        for (const auto &[pattern, value] : llvm::zip(params, args)) {
-          if (!stmtInterpreter->matchPattern(*pattern, value.get())) {
+        for (const auto &[ident, value] : llvm::zip(params, args)) {
+          if (getEnv().isDefinedCurrScope(ident)) {
             stmtInterpreter->report(
-                expr.getRange(), InterpretDiagnostic::error_match_pattern_fail,
-                pattern->toString(), value->toString());
+                expr.getRange(),
+                InterpretDiagnostic::error_redefinition_in_scope, ident);
             return;
           }
+          getEnv().insert(ident,
+                          ValueMemory::create(context, std::move(value)));
         }
 
         Environment::Scope bodyScope(getEnv());
@@ -470,19 +483,18 @@ void RvExprInterpreter::visit(const ArrayExpression &expr) {
 }
 
 void RvExprInterpreter::visit(const TupleExpression &expr) {
-  SmallVector<ValueMemory *> memories;
-  memories.reserve(expr.getSize());
+  SmallVector<unique_ptr<Value>> values;
+  values.reserve(expr.getSize());
 
   for (auto *elementExpr : expr.getExprs()) {
     elementExpr->accept(*this);
     if (diag.hasError())
       return;
 
-    auto *valueMemory = ValueMemory::create(context, std::move(result));
-    memories.emplace_back(valueMemory);
+    values.emplace_back(std::move(result));
   }
 
-  result = TupleValue::create(memories);
+  result = TupleValue::create(std::move(values));
 }
 
 void RvExprInterpreter::visit(const GroupExpression &expr) {

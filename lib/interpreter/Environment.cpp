@@ -1,4 +1,5 @@
 #include "bara/interpreter/Environment.h"
+#include "bara/interpreter/Memory.h"
 #include "bara/interpreter/Value.h"
 
 namespace bara {
@@ -26,4 +27,24 @@ void Environment::insert(StringRef name, Memory *memory) {
   scopes.back().try_emplace(name, memory);
 }
 
+Environment Environment::capture(MemoryContext *context) const {
+  Environment env(builtinFuncTable);
+  DenseMap<StringRef, Memory *> captureScope;
+  for (const auto &scope : scopes)
+    for (const auto &[name, memory] : scope)
+      captureScope[name] = memory;
+
+  for (auto &[name, memory] : captureScope) {
+    Memory *newMemory;
+    if (auto *immut = memory->dyn_cast<ImmutableMemory>())
+      newMemory = ImmutableMemory::create(context, immut->view()->clone());
+    else
+      newMemory = ValueMemory::create(
+          context, memory->cast<ValueMemory>()->view()->clone());
+    memory = newMemory;
+  }
+
+  env.scopes.emplace_back(std::move(captureScope));
+  return env;
+}
 } // namespace bara

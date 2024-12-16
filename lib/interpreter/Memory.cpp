@@ -68,8 +68,8 @@ void AssignVisitor::visit(TupleMemory &mem) {
     return;
   }
 
-  for (auto [mem, valueMemory] : llvm::zip(mems, tupleValue->getMemories())) {
-    if (!mem->assign(valueMemory->view())) {
+  for (auto [mem, valueView] : llvm::zip(mems, tupleValue->getValues())) {
+    if (!mem->assign(valueView.get())) {
       fail = true;
       return;
     }

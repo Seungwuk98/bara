@@ -1,6 +1,9 @@
 add_unit_test(
   InterpreterTests
+  ArithmeticTests.cpp
   LiteralTests.cpp
+  ListTests.cpp
+  TupleTests.cpp
   PRIVATE
   BaraAST
   BaraContext 

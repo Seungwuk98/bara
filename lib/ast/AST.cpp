@@ -685,16 +685,16 @@ void ASTEqualVisitor::visit(const OperatorAssignmentStatement &other) {
 FunctionDeclaration *FunctionDeclaration::create(SMRange range,
                                                  ASTContext *context,
                                                  StringRef name,
-                                                 ArrayRef<Pattern *> params,
+                                                 ArrayRef<StringRef> params,
                                                  ArrayRef<Statement *> body) {
   auto allocSize =
-      totalSizeToAlloc<Pattern *, Statement *>(params.size(), body.size());
+      totalSizeToAlloc<StringRef, Statement *>(params.size(), body.size());
   void *mem = context->alloc(allocSize);
   auto *funcDecl =
       new (mem) FunctionDeclaration(range, name, params.size(), body.size());
 
   std::uninitialized_copy(params.begin(), params.end(),
-                          funcDecl->getTrailingObjects<Pattern *>());
+                          funcDecl->getTrailingObjects<StringRef>());
   std::uninitialized_copy(body.begin(), body.end(),
                           funcDecl->getTrailingObjects<Statement *>());
   return funcDecl;
@@ -703,7 +703,7 @@ FunctionDeclaration *FunctionDeclaration::create(SMRange range,
 void ASTPrintVisitor::visit(const FunctionDeclaration &ast) {
   printer << "fn " << ast.getName() << "(";
   for (auto [idx, param] : llvm::enumerate(ast.getParams())) {
-    param->accept(*this);
+    printer << param;
     if (idx != ast.getParams().size() - 1)
       printer << ", ";
   }
@@ -730,11 +730,16 @@ void ASTEqualVisitor::visit(const FunctionDeclaration &other) {
     return;
   }
 
-  auto paramsEq =
-      isEqualASTArray<Pattern *>(thisDecl->getParams(), other.getParams());
-  if (!paramsEq) {
+  if (thisDecl->getParams().size() != other.getParams().size()) {
     equal = false;
     return;
+  }
+
+  for (auto [l, r] : llvm::zip(thisDecl->getParams(), other.getParams())) {
+    if (l != r) {
+      equal = false;
+      return;
+    }
   }
 
   equal = isEqualASTArray<Statement *>(thisDecl->getBody(), other.getBody());

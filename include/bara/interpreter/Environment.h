@@ -15,6 +15,8 @@ public:
   bool isDefinedCurrScope(StringRef name) const;
   void insert(StringRef name, Memory *memory);
 
+  Environment capture(MemoryContext *context) const;
+
   struct Scope {
     Scope(Environment &env) : env(env) { env.scopes.emplace_back(); }
 

@@ -17,10 +17,6 @@ public:
   /// Expression ::= LogicalOrExpression
   Expression *parseExpression();
 
-private:
-  /// Program ::= Statement*
-  Program *parseProgram();
-
   /// Statement ::=
   ///  CompoundStatement
   ///  | ExpressionStatement
@@ -37,6 +33,10 @@ private:
   ///  | OperatorAssignmentStatement
   ///  | FunctionDeclaration
   Statement *parseStatement();
+
+private:
+  /// Program ::= Statement*
+  Program *parseProgram();
 
   /// CompoundStatement ::= '{' Statement* '}'
   CompoundStatement *parseCompoundStatement();
@@ -96,8 +96,11 @@ private:
   /// LogicalAndExpression ::= BitwiseOrExpression ('&&' BitwiseOrExpression)*
   Expression *parseLogicalAndExpression();
 
-  /// BitwiseOrExpression ::= BitwiseAndExpression ('|' BitwiseAndExpression)*
+  /// BitwiseOrExpression ::= BitwiseXorExpression ('|' BitwiseXorExpression)*
   Expression *parseBitwiseOrExpression();
+
+  /// BitwiseXorExpression ::= BitwiseAndExpression ('^' BitwiseAndExpression)*
+  Expression *parseBitwiseXorExpression();
 
   /// BitwiseAndExpression ::= EqualityExpression ('&' EqualityExpression)*
   Expression *parseBitwiseAndExpression();

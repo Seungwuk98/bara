@@ -10,9 +10,16 @@ void LvExprInterpreter::visit(const IdentifierExpression &expr) {
 
 void LvExprInterpreter::visit(const IndexExpression &expr) {
   auto lv = interpretIndex(&expr);
+  if (diag.hasError())
+    return;
   if (std::holds_alternative<char>(lv)) {
     stmtInterpreter->report(expr.getRange(),
                             InterpretDiagnostic::error_string_index_assignment);
+    return;
+  }
+  if (std::holds_alternative<unique_ptr<Value>>(lv)) {
+    stmtInterpreter->report(expr.getRange(),
+                            InterpretDiagnostic::error_tuple_index_assignment);
     return;
   }
   result = std::get<Memory *>(lv);

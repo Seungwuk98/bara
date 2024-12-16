@@ -425,31 +425,30 @@ private:
 
 /// FunctionDeclaration ::=
 ///   'fn' Identifier '(' ParameterList? ')' '{' Statement* '}'
-/// ParameterList ::= Parameter (',' Parameter)*
-/// Parameter ::= Pattern
+/// ParameterList ::= Identifier (',' Identifier)*
 class FunctionDeclaration final
     : public ASTBase<FunctionDeclaration, Statement>,
-      public TrailingObjects<FunctionDeclaration, Pattern *, Statement *> {
+      public TrailingObjects<FunctionDeclaration, StringRef, Statement *> {
   friend class TrailingObjects;
   FunctionDeclaration(SMRange range, StringRef name, size_t paramSize,
                       size_t bodySize)
       : ASTBase(range, ASTKind::FunctionDeclaration), name(name),
         paramSize(paramSize), bodySize(bodySize) {}
 
-  size_t numTrailingObjects(OverloadToken<Pattern *>) const {
+  size_t numTrailingObjects(OverloadToken<StringRef>) const {
     return paramSize;
   }
 
 public:
   static FunctionDeclaration *create(SMRange range, ASTContext *context,
-                                     StringRef name, ArrayRef<Pattern *> params,
+                                     StringRef name, ArrayRef<StringRef> params,
                                      ArrayRef<Statement *> body);
 
   StringRef getName() const { return name; }
   size_t getParamSize() const { return paramSize; }
   size_t getBodySize() const { return bodySize; }
-  ArrayRef<Pattern *> getParams() const {
-    return {getTrailingObjects<Pattern *>(), paramSize};
+  ArrayRef<StringRef> getParams() const {
+    return {getTrailingObjects<StringRef>(), paramSize};
   }
   ArrayRef<Statement *> getBody() const {
     return {getTrailingObjects<Statement *>(), bodySize};
@@ -637,7 +636,7 @@ class IdentifierExpression final
     : public ASTBase<IdentifierExpression, Expression> {
   friend class ASTContext;
   IdentifierExpression(SMRange range, StringRef name)
-      : ASTBase(range, ASTKind::IdentifierPattern), name(name) {}
+      : ASTBase(range, ASTKind::IdentifierExpression), name(name) {}
 
 public:
   static IdentifierExpression *create(SMRange range, ASTContext *context,

@@ -418,19 +418,19 @@ FunctionDeclaration *Parser::parseFunctionDeclaration() {
   if (consume<Token::Tok_LParen>())
     return nullptr;
 
-  SmallVector<Pattern *> params;
+  SmallVector<StringRef> params;
   if (!peekIs<Token::Tok_RParen>()) {
-    auto *pattern = parsePattern();
-    if (diag.hasError())
+    auto *identTok = advance();
+    if (expect<Token::Tok_Identifier>(identTok))
       return nullptr;
-    params.push_back(pattern);
+    params.push_back(identTok->getSymbol());
 
     while (peekIs<Token::Tok_Comma>()) {
       skip();
-      pattern = parsePattern();
-      if (diag.hasError())
+      identTok = advance();
+      if (expect<Token::Tok_Identifier>(identTok))
         return nullptr;
-      params.push_back(pattern);
+      params.emplace_back(identTok->getSymbol());
     }
   }
 
@@ -491,17 +491,35 @@ Expression *Parser::parseLogicalAndExpression() {
 
 Expression *Parser::parseBitwiseOrExpression() {
   RangeCapture capture(*this);
-  auto *lhs = parseBitwiseAndExpression();
+  auto *lhs = parseBitwiseXorExpression();
   if (diag.hasError())
     return nullptr;
 
   while (peekIs<Token::Tok_VBar>()) {
     skip();
-    auto *rhs = parseBitwiseAndExpression();
+    auto *rhs = parseBitwiseXorExpression();
     if (diag.hasError())
       return nullptr;
     lhs = BinaryExpression::create(capture.create(), context, lhs,
                                    Operator::BitOr, rhs);
+  }
+
+  return lhs;
+}
+
+Expression *Parser::parseBitwiseXorExpression() {
+  RangeCapture capture(*this);
+  auto *lhs = parseBitwiseAndExpression();
+  if (diag.hasError())
+    return nullptr;
+
+  while (peekIs<Token::Tok_Caret>()) {
+    skip();
+    auto *rhs = parseBitwiseAndExpression();
+    if (diag.hasError())
+      return nullptr;
+    lhs = BinaryExpression::create(capture.create(), context, lhs,
+                                   Operator::BitXor, rhs);
   }
 
   return lhs;

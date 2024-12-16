@@ -15,6 +15,8 @@ public:
   using FunctionArrayTy = std::function<void(VisitorTy *, VisitTy *)> *;
 
   void visit(VisitTy &ast) {
+    assert(visitFn[static_cast<uint16_t>(ast.getKind())] &&
+           "No visit function for this AST node.");
     visitFn[static_cast<uint16_t>(ast.getKind())](this, &ast);
   }
 

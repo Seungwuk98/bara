@@ -14,6 +14,7 @@ DIAG(error_unresolved_continue_statement, "Unresolved continue statement",
      Error)
 DIAG(error_assignment_fail, "Assignment value({0}) fail", Error)
 DIAG(error_string_index_assignment, "String index assignment is invalid", Error)
+DIAG(error_tuple_index_assignment, "Tuple index assignment is invalid", Error)
 DIAG(error_invalid_left_size_of_operator_assignment,
      "Left side of operator({0}) assignemnt is invalid.", Error)
 DIAG(error_unknown_identifier, "Unknown identifier '{0}'", Error)

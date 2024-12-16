@@ -76,7 +76,8 @@ public:
   MemoryContext *getContext() const { return context; }
 
 protected:
-  Memory(MemoryContext *context, MemoryKind kind) : kind(kind) {}
+  Memory(MemoryContext *context, MemoryKind kind)
+      : context(context), kind(kind) {}
 
 private:
   MemoryContext *context;

@@ -94,7 +94,7 @@ public:
   }
 
   static unique_ptr<IntegerValue> create(int64_t value);
-  uint64_t getValue() const { return value; }
+  int64_t getValue() const { return value; }
 
 private:
   int64_t value;
@@ -171,23 +171,23 @@ private:
 };
 
 class TupleValue final : public Value {
-  TupleValue(ArrayRef<ValueMemory *> mems)
-      : Value(ValueKind::Tuple), mems(mems) {}
+  TupleValue(SmallVector<unique_ptr<Value>> mems)
+      : Value(ValueKind::Tuple), mems(std::move(mems)) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Tuple;
   }
 
-  static unique_ptr<TupleValue> create(ArrayRef<ValueMemory *> mems);
+  static unique_ptr<TupleValue> create(SmallVector<unique_ptr<Value>> mems);
 
-  ArrayRef<ValueMemory *> getMemories() const { return mems; }
-  ValueMemory *getElement(size_t index) const { return mems[index]; }
+  ArrayRef<unique_ptr<Value>> getValues() const { return mems; }
+  Value *getElement(size_t index) const { return mems[index].get(); }
   size_t size() const { return mems.size(); }
   bool empty() const { return mems.empty(); }
 
 private:
-  const vector<ValueMemory *> mems;
+  const SmallVector<unique_ptr<Value>> mems;
 };
 
 class NilValue final : public Value {

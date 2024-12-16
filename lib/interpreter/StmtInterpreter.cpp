@@ -311,12 +311,12 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
 
         auto patterns = pattern->getPatterns();
         auto *tupleValue = value->cast<TupleValue>();
-        auto memories = tupleValue->getMemories();
-        if (patterns.size() != memories.size())
+        auto elements = tupleValue->getValues();
+        if (patterns.size() != elements.size())
           return false;
 
-        for (auto [pattern, memory] : llvm::zip(patterns, memories)) {
-          if (!matchPattern(*pattern, memory->view()))
+        for (auto [pattern, element] : llvm::zip(patterns, elements)) {
+          if (!matchPattern(*pattern, element.get()))
             return false;
         }
         return true;
@@ -356,6 +356,11 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
         return value->isa<NilValue>();
       });
 }
+
+static raw_ostream *printOS = &outs();
+
+void setPrintOS(raw_ostream &os) { printOS = &os; }
+raw_ostream &getPrintOS() { return *printOS; }
 
 static const char *interpreterDiagMsgs[] = {
 #define DIAG(Name, Msg, Error) Msg,

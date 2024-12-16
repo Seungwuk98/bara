@@ -22,7 +22,8 @@ public:
         stmtInterpreter(stmtInterpreter) {}
 
   Memory *interpretIdentifier(const IdentifierExpression *expr);
-  std::variant<Memory *, char> interpretIndex(const IndexExpression *expr);
+  std::variant<std::monostate, Memory *, unique_ptr<Value>, char>
+  interpretIndex(const IndexExpression *expr);
 
   Environment &getEnv() { return stmtInterpreter->env; }
 
@@ -90,61 +91,62 @@ Memory *CommonExprInterpreter<ConcreteType>::interpretIdentifier(
 }
 
 template <typename ConcreteType>
-std::variant<Memory *, char>
+std::variant<std::monostate, Memory *, unique_ptr<Value>, char>
 CommonExprInterpreter<ConcreteType>::interpretIndex(
     const IndexExpression *expr) {
-
+  using IndexReturnTy =
+      std::variant<std::monostate, Memory *, unique_ptr<Value>, char>;
   auto value = stmtInterpreter->rvInterpret(*expr->getLhs());
   if (diag.hasError())
-    return nullptr;
+    return {};
 
   if (!value->isa<ListValue, TupleValue, StringValue>()) {
     stmtInterpreter->report(expr->getLhs()->getRange(),
                             InterpretDiagnostic::error_invalid_type_to_access,
                             value->toString());
-    return nullptr;
+    return {};
   }
 
   auto index = stmtInterpreter->rvInterpret(*expr->getRhs());
   if (diag.hasError())
-    return nullptr;
+    return {};
 
   if (!index->isa<IntegerValue>()) {
     stmtInterpreter->report(expr->getRhs()->getRange(),
                             InterpretDiagnostic::error_invalid_type_for_access,
                             index->toString());
-    return nullptr;
+    return {};
   }
 
   int64_t indexValue = index->cast<IntegerValue>()->getValue();
-  return llvm::TypeSwitch<Value *, std::variant<Memory *, char>>(value.get())
-      .Case([&](const StringValue *str) -> std::variant<Memory *, char> {
+  return llvm::TypeSwitch<Value *, IndexReturnTy>(value.get())
+      .Case([&](const StringValue *str) -> IndexReturnTy {
         if (indexValue < 0 || indexValue >= str->getValue().size()) {
           stmtInterpreter->report(expr->getRange(),
                                   InterpretDiagnostic::error_out_of_range,
                                   indexValue, str->getValue().size());
-          return nullptr;
+          return {};
         }
         return str->getValue()[indexValue];
       })
-      .Case([&](const ListValue *list) -> std::variant<Memory *, char> {
+      .Case([&](const ListValue *list) -> IndexReturnTy {
         if (indexValue < 0 || indexValue >= list->size()) {
           stmtInterpreter->report(expr->getRange(),
                                   InterpretDiagnostic::error_out_of_range,
                                   indexValue, list->size());
-          return nullptr;
+          return {};
         }
         return list->getElement(indexValue);
       })
-      .Default([&](const Value *tuple) -> std::variant<Memory *, char> {
-        auto tupleValue = tuple->cast<TupleValue>();
-        if (indexValue < 0 || indexValue >= tupleValue->size()) {
+      .Default([&](const Value *value) -> IndexReturnTy {
+        auto tuple = value->cast<TupleValue>();
+        if (indexValue < 0 || indexValue >= tuple->size()) {
           stmtInterpreter->report(expr->getRange(),
                                   InterpretDiagnostic::error_out_of_range,
-                                  indexValue, tupleValue->size());
-          return nullptr;
+                                  indexValue, tuple->size());
+          return {};
         }
-        return tupleValue->getElement(indexValue);
+        return tuple->getElement(indexValue)->clone();
       });
 }
 

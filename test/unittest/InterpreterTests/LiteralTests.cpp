@@ -1,4 +1,5 @@
 #include "InterpreterTestUtils.h"
+#include "bara/interpreter/Value.h"
 
 namespace bara {
 
@@ -47,13 +48,11 @@ TEST(INTERPRETER_TEST_SUITE, LiteralTests) {
 
   auto tupleView = tupleValue->cast<TupleValue>();
   ASSERT_EQ(tupleView->size(), 2);
-  ASSERT_TRUE(tupleView->getElement(0)->view()->isa<IntegerValue>());
-  ASSERT_EQ(tupleView->getElement(0)->view()->cast<IntegerValue>()->getValue(),
-            1);
+  ASSERT_TRUE(tupleView->getElement(0)->isa<IntegerValue>());
+  ASSERT_EQ(tupleView->getElement(0)->cast<IntegerValue>()->getValue(), 1);
 
-  ASSERT_TRUE(tupleView->getElement(1)->view()->isa<IntegerValue>());
-  ASSERT_EQ(tupleView->getElement(1)->view()->cast<IntegerValue>()->getValue(),
-            2);
+  ASSERT_TRUE(tupleView->getElement(1)->isa<IntegerValue>());
+  ASSERT_EQ(tupleView->getElement(1)->cast<IntegerValue>()->getValue(), 2);
 
   auto listValue = tests.eval("[1, 2]");
   ASSERT_FALSE(tests.hasError());
@@ -61,13 +60,11 @@ TEST(INTERPRETER_TEST_SUITE, LiteralTests) {
 
   auto listView = tupleValue->cast<TupleValue>();
   ASSERT_EQ(listView->size(), 2);
-  ASSERT_TRUE(listView->getElement(0)->view()->isa<IntegerValue>());
-  ASSERT_EQ(listView->getElement(0)->view()->cast<IntegerValue>()->getValue(),
-            1);
+  ASSERT_TRUE(listView->getElement(0)->isa<IntegerValue>());
+  ASSERT_EQ(listView->getElement(0)->cast<IntegerValue>()->getValue(), 1);
 
-  ASSERT_TRUE(listView->getElement(1)->view()->isa<IntegerValue>());
-  ASSERT_EQ(listView->getElement(1)->view()->cast<IntegerValue>()->getValue(),
-            2);
+  ASSERT_TRUE(listView->getElement(1)->isa<IntegerValue>());
+  ASSERT_EQ(listView->getElement(1)->cast<IntegerValue>()->getValue(), 2);
 
   auto lambdaValue = tests.eval(R"(\a => 1)");
   ASSERT_FALSE(tests.hasError());
@@ -79,6 +76,19 @@ TEST(INTERPRETER_TEST_SUITE, LiteralTests) {
   auto lambda_a_1 = LambdaExpression::create({}, tests.getASTContext(),
                                              {pattern_a}, integer_1);
   ASSERT_TRUE(lambdaView->getExpression()->isEqual(lambda_a_1));
+}
+
+TEST(INTERPRETER_TEST_SUITE, BuiltinFnTests) {
+  InterpreterTests tests;
+
+#define BUILTIN_FUNC(FuncName, Identifier, ...)                                \
+  do {                                                                         \
+    auto val = tests.eval(Identifier);                                         \
+    ASSERT_FALSE(tests.hasError());                                            \
+    ASSERT_TRUE(val->isa<BuiltinFunctionValue>());                             \
+    ASSERT_EQ(val->cast<BuiltinFunctionValue>()->getName(), Identifier);       \
+  } while (false);
+#include "bara/interpreter/BuiltinFunctions.def"
 }
 
 } // namespace bara
