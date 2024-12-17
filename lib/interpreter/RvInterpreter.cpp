@@ -255,7 +255,7 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
       return;
     auto rhs = std::move(result);
 
-    auto isSame = lhs->isEqual(lhs.get());
+    auto isSame = lhs->isEqual(rhs.get());
     result = BoolValue::create(isSame);
     return;
   }
@@ -270,7 +270,7 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
       return;
     auto rhs = std::move(result);
 
-    auto isSame = lhs->isEqual(lhs.get());
+    auto isSame = lhs->isEqual(rhs.get());
     result = BoolValue::create(!isSame);
     return;
   }
