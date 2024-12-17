@@ -151,6 +151,15 @@ void Lexer::lex() {
       kind = Token::Tok_VBar;
     return;
 
+  case '!':
+    ch = peek();
+    if (ch == '=') {
+      skip();
+      kind = Token::Tok_NotEqual;
+    } else
+      kind = Token::Tok_Bang;       
+    return;
+  
   case ',':
     kind = Token::Tok_Comma;      return;
   case ';':
@@ -167,8 +176,6 @@ void Lexer::lex() {
     kind = Token::Tok_LBracket;   return;
   case ']':
     kind = Token::Tok_RBracket;   return;
-  case '!':
-    kind = Token::Tok_Bang;       return;
   case '~':
     kind = Token::Tok_Tilde;      return;
   case '\\':

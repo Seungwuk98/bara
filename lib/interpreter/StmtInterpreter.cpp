@@ -172,7 +172,54 @@ void StmtInterpreter::visit(const WhileStatement &stmt) {
 }
 
 void StmtInterpreter::visit(const ForStatement &stmt) {
-  llvm_unreachable("Not implemented");
+  Environment::Scope scope(env);
+  auto declOpt = stmt.getDecl();
+
+  if (declOpt) {
+    (*declOpt)->accept(*this);
+    if (isTerminated())
+      return;
+  }
+
+  auto condOpt = stmt.getCond();
+  auto stepOpt = stmt.getStep();
+  while (true) {
+    if (condOpt) {
+      auto condV = rvInterpret(**condOpt);
+      if (isTerminated())
+        return;
+      auto condBool = condV->toBool();
+      if (!condBool) {
+        report((*condOpt)->getRange(),
+               InterpretDiagnostic::error_invalid_to_conver_boolean,
+               condV->toString());
+        return;
+      }
+      if (!*condBool)
+        break;
+    }
+    Environment::Scope bodyScope(env);
+    for (const auto &bodyStmt : stmt.getBody()) {
+      bodyStmt->accept(*this);
+      if (diag.hasError())
+        return;
+      else if (continueFlag) {
+        continueFlag = nullptr;
+        continue;
+      } else if (breakFlag) {
+        breakFlag = nullptr;
+        break;
+      } else if (returnValue) {
+        return;
+      }
+    }
+
+    if (stepOpt) {
+      (*stepOpt)->accept(*this);
+      if (isTerminated())
+        return;
+    }
+  }
 }
 
 void StmtInterpreter::visit(const BreakStatement &stmt) {
@@ -334,7 +381,8 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
         if (!value->isa<StringValue>())
           return false;
         auto *stringValue = value->cast<StringValue>();
-        return stringValue->getValue() == pattern->getValue();
+        auto evaledPattern = evalStringLiteral(pattern->getValue());
+        return evaledPattern == stringValue->getValue();
       })
       .Case([&](const BooleanPattern *pattern) {
         if (!value->isa<BoolValue>())

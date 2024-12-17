@@ -1,6 +1,7 @@
 add_unit_test(
   ParserTests
   LexerTests.cpp
+  PrecedenceTests.cpp
   PRIVATE
   BaraAST
   BaraContext

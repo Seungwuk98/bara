@@ -1,4 +1,6 @@
 #include "bara/diagnostic/Diagnostic.h"
+#include "bara/interpreter/StmtInterpreter.h"
+#include "bara/interpreter/Value.h"
 #include "bara/parser/Parser.h"
 #include "bara/utils/STL.h"
 #include "llvm/Support/CommandLine.h"
@@ -9,6 +11,7 @@ namespace bara::cl {
 
 enum Action {
   ASTPrint,
+  Interpret,
 };
 
 llvm::cl::opt<string> input(llvm::cl::Positional, llvm::cl::init("-"),
@@ -19,8 +22,9 @@ llvm::cl::opt<string> output("o", llvm::cl::init("-"),
                              llvm::cl::value_desc("filename"));
 
 llvm::cl::opt<Action>
-    action(llvm::cl::desc("Action to perform:"),
-           llvm::cl::values(clEnumValN(ASTPrint, "ast-print", "Print AST")));
+    action(llvm::cl::desc("Action to perform:"), llvm::cl::init(Interpret),
+           llvm::cl::values(clEnumValN(ASTPrint, "ast-print", "Print AST"),
+                            clEnumValN(Interpret, "interpret", "Interpret")));
 
 } // namespace bara::cl
 
@@ -66,7 +70,17 @@ int baraMain() {
   if (diag.hasError())
     return 1;
 
-  dump([program](raw_ostream &os) { os << program->toString(); });
+  if (bara::cl::action == cl::ASTPrint) {
+    dump([program](raw_ostream &os) { os << program->toString(); });
+    return 0;
+  }
+
+  if (bara::cl::action == cl::Interpret) {
+    MemoryContext memoryContext;
+    interpret(program, &memoryContext, diag);
+    return diag.hasError();
+  }
+
   return 0;
 }
 

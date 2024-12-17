@@ -71,6 +71,51 @@ unique_ptr<Value> RvExprInterpreter::binaryOp(SMRange range, const Value *l,
   return nullptr;
 }
 
+string evalStringLiteral(StringRef buffer) {
+  string value;
+  value.reserve(buffer.size());
+  raw_string_ostream os(value);
+
+  assert(buffer.front() == '"');
+  /// first string must be a double quote
+  auto pos = 1;
+  while (pos < buffer.size() - 1) {
+    auto ch = buffer[pos++];
+    if (ch == '\\') {
+      /// This asser must be guaranteed by lexer
+      assert(pos < buffer.size() - 1);
+      ch = buffer[pos++];
+
+      switch (ch) {
+        // clang-format off
+      case 'n':   os << '\n';   break;
+      case 't':   os << '\t';   break;
+      case 'f':   os << '\f';   break;
+      case 'r':   os << '\r';   break;
+      case 'v':   os << '\v';   break;
+      case 'b':   os << '\b';   break;
+      case '\'':  os << '\'';   break;
+      case '\"':  os << '\"';   break;
+      case 0:     os << '\0';   break;
+      case '\\':  os << '\\';   break;
+        // clang-format on
+      case '\n':
+        /// "abcd \
+        ///       efg" => "abcdefg"
+        while (pos < buffer.size() - 1 && std::isspace(buffer[pos]))
+          pos++;
+        break;
+
+      default:
+        os << ch;
+      }
+    } else {
+      os << ch;
+    }
+  }
+  return os.str();
+}
+
 void RvExprInterpreter::visit(const IdentifierExpression &expr) {
   auto *memory = interpretIdentifier(&expr);
   if (diag.hasError())
@@ -401,6 +446,7 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
               InterpretDiagnostic::error_unresolved_break_statement);
         } else if (stmtInterpreter->returnFlag) {
           result = std::move(stmtInterpreter->returnValue);
+          stmtInterpreter->returnFlag = nullptr;
         } else {
           result = NilValue::create();
         }
@@ -421,13 +467,15 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
           return;
         }
 
-        for (const auto &[pattern, value] : llvm::zip(params, args)) {
-          if (!stmtInterpreter->matchPattern(*pattern, value.get())) {
+        for (const auto &[param, value] : llvm::zip(params, args)) {
+          if (getEnv().isDefinedCurrScope(param)) {
             stmtInterpreter->report(
-                expr.getRange(), InterpretDiagnostic::error_match_pattern_fail,
-                pattern->toString(), value->toString());
+                expr.getRange(),
+                InterpretDiagnostic::error_redefinition_in_scope, param);
             return;
           }
+          getEnv().insert(param,
+                          ValueMemory::create(context, std::move(value)));
         }
 
         Environment::Scope bodyScope(getEnv());
@@ -452,6 +500,7 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
                 InterpretDiagnostic::error_unresolved_break_statement);
           } else if (stmtInterpreter->returnFlag) {
             result = std::move(stmtInterpreter->returnValue);
+            stmtInterpreter->returnFlag = nullptr;
           } else {
             result = NilValue::create();
           }
@@ -520,50 +569,8 @@ void RvExprInterpreter::visit(const FloatLiteral &expr) {
 }
 
 void RvExprInterpreter::visit(const StringLiteral &expr) {
-  string value;
-  value.reserve(expr.getValue().size());
-  raw_string_ostream os(value);
-
-  StringRef buffer = expr.getValue();
-  assert(expr.getValue().front() == '"');
-  /// first string must be a double quote
-  auto pos = 1;
-  while (pos < buffer.size() - 1) {
-    auto ch = buffer[pos++];
-    if (ch == '\\') {
-      /// This asser must be guaranteed by lexer
-      assert(pos < buffer.size() - 1);
-      ch = buffer[pos++];
-
-      switch (ch) {
-        // clang-format off
-      case 'n':   os << '\n';   break;
-      case 't':   os << '\t';   break;
-      case 'f':   os << '\f';   break;
-      case 'r':   os << '\r';   break;
-      case 'v':   os << '\v';   break;
-      case 'b':   os << '\b';   break;
-      case '\'':  os << '\'';   break;
-      case '\"':  os << '\"';   break;
-      case 0:     os << '\0';   break;
-      case '\\':  os << '\\';   break;
-        // clang-format on
-      case '\n':
-        /// "abcd \
-        ///       efg" => "abcdefg"
-        while (pos < buffer.size() - 1 && std::isspace(buffer[pos]))
-          pos++;
-        break;
-
-      default:
-        os << ch;
-      }
-    } else {
-      os << ch;
-    }
-  }
-
-  result = StringValue::create(os.str());
+  auto value = evalStringLiteral(expr.getValue());
+  result = StringValue::create(value);
 }
 
 void RvExprInterpreter::visit(const NilLiteral &expr) {

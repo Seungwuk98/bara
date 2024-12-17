@@ -490,7 +490,7 @@ private:
 ///   '\' ParamList? '=>' (Expression | '{' Statement* '}')
 class LambdaExpression final
     : public ASTBase<LambdaExpression, Expression>,
-      public TrailingObjects<LambdaExpression, Pattern *, AST *> {
+      public TrailingObjects<LambdaExpression, StringRef, AST *> {
   friend class ASTContext;
   friend class TrailingObjects;
 
@@ -499,23 +499,23 @@ class LambdaExpression final
       : ASTBase(range, ASTKind::LambdaExpression), paramSize(paramSize),
         isExpr(isExpr), bodySize(bodySize) {}
 
-  size_t numTrailingObjects(OverloadToken<Pattern *>) const {
+  size_t numTrailingObjects(OverloadToken<StringRef>) const {
     return paramSize;
   }
 
 public:
   static LambdaExpression *create(SMRange range, ASTContext *context,
-                                  ArrayRef<Pattern *> params, Expression *expr);
+                                  ArrayRef<StringRef> params, Expression *expr);
 
   static LambdaExpression *create(SMRange range, ASTContext *context,
-                                  ArrayRef<Pattern *> params,
+                                  ArrayRef<StringRef> params,
                                   ArrayRef<Statement *> body);
 
   size_t getParamSize() const { return paramSize; }
   bool isExprBody() const { return isExpr; }
   Expression *getExpr() const;
-  ArrayRef<Pattern *> getParams() const {
-    return {getTrailingObjects<Pattern *>(), paramSize};
+  ArrayRef<StringRef> getParams() const {
+    return {getTrailingObjects<StringRef>(), paramSize};
   }
   ArrayRef<Statement *> getStmtBody() const;
   size_t getBodySize() const { return bodySize; }

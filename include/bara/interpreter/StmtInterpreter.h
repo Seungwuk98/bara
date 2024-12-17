@@ -54,6 +54,8 @@ private:
       interpreter.env = env;
     }
 
+    ~ReplaceEnvScope() { interpreter.env = std::move(savedEnv); }
+
   private:
     StmtInterpreter &interpreter;
     Environment savedEnv;

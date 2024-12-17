@@ -126,7 +126,7 @@ public:
 
 private:
   const AST *thisAST;
-  bool equal;
+  bool equal = true;
 };
 
 void AST::accept(ASTVisitor &visitor) { visitor.visit(*this); }
@@ -809,15 +809,15 @@ void ASTEqualVisitor::visit(const MatchExpression &other) {
 //===----------------------------------------------------------------------===//
 
 LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
-                                           ArrayRef<Pattern *> params,
+                                           ArrayRef<StringRef> params,
                                            ArrayRef<Statement *> body) {
   auto allocSize =
-      totalSizeToAlloc<Pattern *, AST *>(params.size(), body.size());
+      totalSizeToAlloc<StringRef, AST *>(params.size(), body.size());
   void *mem = context->alloc(allocSize);
   auto *lambdaExpr =
       new (mem) LambdaExpression(range, params.size(), false, body.size());
   std::uninitialized_copy(params.begin(), params.end(),
-                          lambdaExpr->getTrailingObjects<Pattern *>());
+                          lambdaExpr->getTrailingObjects<StringRef>());
   std::uninitialized_copy(
       body.begin(), body.end(),
       reinterpret_cast<Statement **>(lambdaExpr->getTrailingObjects<AST *>()));
@@ -825,13 +825,13 @@ LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
 }
 
 LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
-                                           ArrayRef<Pattern *> params,
+                                           ArrayRef<StringRef> params,
                                            Expression *expr) {
-  auto allocSize = totalSizeToAlloc<Pattern *, AST *>(params.size(), 1);
+  auto allocSize = totalSizeToAlloc<StringRef, AST *>(params.size(), 1);
   void *mem = context->alloc(allocSize);
   auto *lambdaExpr = new (mem) LambdaExpression(range, params.size(), true, 1);
   std::uninitialized_copy(params.begin(), params.end(),
-                          lambdaExpr->getTrailingObjects<Pattern *>());
+                          lambdaExpr->getTrailingObjects<StringRef>());
   *(reinterpret_cast<Expression **>(lambdaExpr->getTrailingObjects<AST *>())) =
       expr;
   return lambdaExpr;
@@ -851,7 +851,7 @@ ArrayRef<Statement *> LambdaExpression::getStmtBody() const {
 void ASTPrintVisitor::visit(const LambdaExpression &ast) {
   printer << "\\";
   for (auto [idx, param] : llvm::enumerate(ast.getParams())) {
-    param->accept(*this);
+    printer << param;
     if (idx != ast.getParams().size() - 1)
       printer << ", ";
   }
@@ -878,9 +878,16 @@ void ASTEqualVisitor::visit(const LambdaExpression &other) {
   }
 
   auto *thisExpr = thisAST->cast<LambdaExpression>();
-  if (!isEqualASTArray<Pattern *>(thisExpr->getParams(), other.getParams())) {
+  if (thisExpr->getParams().size() != other.getParams().size()) {
     equal = false;
     return;
+  }
+
+  for (auto [l, r] : llvm::zip(thisExpr->getParams(), other.getParams())) {
+    if (l != r) {
+      equal = false;
+      return;
+    }
   }
 
   if (thisExpr->isExprBody() != other.isExprBody()) {

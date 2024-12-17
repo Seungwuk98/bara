@@ -47,4 +47,18 @@ Environment Environment::capture(MemoryContext *context) const {
   env.scopes.emplace_back(std::move(captureScope));
   return env;
 }
+
+void Environment::dump() const {
+  for (const auto &scope : llvm::reverse(scopes)) {
+    errs() << "{\n";
+    for (const auto &[name, memory] : scope) {
+      llvm::errs() << " " << name << " -> ";
+      if (auto valueM = memory->dyn_cast<ValueMemory>())
+        errs() << valueM->view()->toString();
+      else
+        errs() << memory->cast<ImmutableMemory>()->view()->toString();
+    }
+    errs() << "}\n";
+  }
+}
 } // namespace bara

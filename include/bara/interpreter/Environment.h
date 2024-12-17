@@ -26,6 +26,8 @@ public:
     Environment &env;
   };
 
+  void dump() const;
+
 private:
   const DenseMap<StringRef, ImmutableMemory *> *builtinFuncTable;
   SmallVector<DenseMap<StringRef, Memory *>> scopes;

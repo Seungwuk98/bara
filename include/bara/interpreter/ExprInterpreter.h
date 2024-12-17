@@ -57,6 +57,8 @@ private:
   unique_ptr<Value> result = nullptr;
 };
 
+string evalStringLiteral(StringRef buffer);
+
 class LvExprInterpreter : public CommonExprInterpreter<LvExprInterpreter>,
                           public ConstASTVisitorBase<LvExprInterpreter
 #define EXPRESSION(Name) , Name

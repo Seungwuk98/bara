@@ -6,5 +6,6 @@ target_link_libraries(
   BaraAST
   BaraContext
   BaraParser
+  BaraInterpreter
   ${llvm_libs}
 )

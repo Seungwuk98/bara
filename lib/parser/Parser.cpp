@@ -51,6 +51,9 @@ Statement *Parser::parseStatement() {
     case Token::Tok_Semicolon:
       skip();
       return ExpressionStatement::create(capture.create(), context, expr);
+    case Token::Tok_Eof:
+      report(peekTok->getRange(), ParseDiagnostic::error_unexpected_token,
+             "semicolon", Token::getTokenString(peekTok->getKind()));
     case Token::Tok_Equal:
       return parseAssignmentStatement(expr);
     case Token::Tok_PlusEqual:
@@ -322,17 +325,19 @@ DeclarationStatement *Parser::parseDeclarationStatement() {
   if (diag.hasError())
     return nullptr;
 
-  if (consume<Token::Tok_Equal>())
-    return nullptr;
-
-  auto *expr = parseExpression();
-  if (diag.hasError())
-    return nullptr;
+  optional<Expression *> init;
+  if (peekIs<Token::Tok_Equal>()) {
+    skip();
+    auto *expr = parseExpression();
+    if (diag.hasError())
+      return nullptr;
+    init = expr;
+  }
 
   if (consume<Token::Tok_Semicolon>())
     return nullptr;
 
-  return DeclarationStatement::create(capture.create(), context, pattern, expr);
+  return DeclarationStatement::create(capture.create(), context, pattern, init);
 }
 
 AssignmentStatement *Parser::parseAssignmentStatement(Expression *lhs) {
@@ -794,19 +799,19 @@ LambdaExpression *Parser::parseLambdaExpression() {
   if (consume<Token::Tok_BackSlash>())
     return nullptr;
 
-  SmallVector<Pattern *> params;
+  SmallVector<StringRef> params;
   if (!peekIs<Token::Tok_RightArrow>()) {
-    auto *pattern = parsePattern();
-    if (diag.hasError())
+    auto *identTok = advance();
+    if (expect<Token::Tok_Identifier>(identTok))
       return nullptr;
-    params.push_back(pattern);
+    params.emplace_back(identTok->getSymbol());
 
     while (peekIs<Token::Tok_Comma>()) {
       skip();
-      pattern = parsePattern();
-      if (diag.hasError())
+      identTok = advance();
+      if (expect<Token::Tok_Identifier>(identTok))
         return nullptr;
-      params.push_back(pattern);
+      params.emplace_back(identTok->getSymbol());
     }
   }
 
@@ -814,8 +819,11 @@ LambdaExpression *Parser::parseLambdaExpression() {
     return nullptr;
 
   if (peekIs<Token::Tok_LBrace>()) {
+    skip();
     auto stmts = parseStatements();
     if (diag.hasError())
+      return nullptr;
+    if (consume<Token::Tok_RBrace>())
       return nullptr;
     return LambdaExpression::create(capture.create(), context, params, stmts);
   }
