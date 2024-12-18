@@ -71,10 +71,9 @@ TEST(INTERPRETER_TEST_SUITE, LiteralTests) {
   ASSERT_TRUE(lambdaValue->isa<LambdaValue>());
 
   auto lambdaView = lambdaValue->cast<LambdaValue>();
-  auto pattern_a = IdentifierPattern::create({}, tests.getASTContext(), "a");
   auto integer_1 = IntegerLiteral::create({}, tests.getASTContext(), 1);
-  auto lambda_a_1 = LambdaExpression::create({}, tests.getASTContext(),
-                                             {pattern_a}, integer_1);
+  auto lambda_a_1 =
+      LambdaExpression::create({}, tests.getASTContext(), {"a"}, integer_1);
   ASSERT_TRUE(lambdaView->getExpression()->isEqual(lambda_a_1));
 }
 

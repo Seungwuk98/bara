@@ -508,7 +508,7 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
       })
       .Case([&](BuiltinFunctionValue *builtinV) {
         auto func = builtinV->getFuncBody();
-        result = func(args, diag, expr.getRange());
+        result = func(args, diag, expr.getRange(), context);
       })
       .Default(
           [&](Value *) { llvm_unreachable("never used for call operation"); });

@@ -1,10 +1,14 @@
+#include "bara/context/MemoryContext.h"
 #include "bara/diagnostic/Diagnostic.h"
 #include "bara/interpreter/StmtInterpreter.h"
 #include "bara/interpreter/Value.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/FloatingPointMode.h"
+#include "llvm/ADT/SmallVectorExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
+#include <iostream>
 
 namespace bara {
 
@@ -33,7 +37,7 @@ void report(SMRange range, Diagnostic &diag, Diag kind, Args &&...args) {
 
 #define DECL(Name)                                                             \
   unique_ptr<Value> Name(ArrayRef<unique_ptr<Value>> args, Diagnostic &diag,   \
-                         SMRange range)
+                         SMRange range, MemoryContext *context)
 
 DECL(print) {
   for (const auto &[idx, arg] : llvm::enumerate(args)) {
@@ -76,7 +80,6 @@ DECL(push) {
   }
 
   auto listValue = value->cast<ListValue>();
-  auto context = listValue->getVectorMemory()->getContext();
   auto newMemory = ValueMemory::create(context, args[1]->clone());
   listValue->getVectorMemory()->push(newMemory);
 
@@ -136,7 +139,7 @@ DECL(format) {
       break;
 
     if (argIdx < args.size())
-      os << args[argIdx]->toString();
+      os << args[argIdx++]->toString();
     else
       os << "{}";
     pos = formatIdx + 2;
@@ -179,7 +182,7 @@ DECL(intCast) {
   return ValueSwitch(value)
       .Case([&](const IntegerValue *intV) { return intV->clone(); })
       .Case([&](const FloatValue *floatV) -> unique_ptr<Value> {
-        llvm::APSInt apsInt;
+        llvm::APSInt apsInt(64, false);
         bool isExact;
         auto status = floatV->getValue().convertToInteger(
             apsInt, llvm::RoundingMode::TowardNegative, &isExact);
@@ -197,8 +200,8 @@ DECL(intCast) {
       .Case([&](const StringValue *strV) -> unique_ptr<Value> {
         auto value = strV->getValue();
         int64_t result;
-        auto success = value.getAsInteger(10, result);
-        if (!success) {
+        auto fail = value.getAsInteger(10, result);
+        if (fail) {
           report(range, diag, error_cast, strV->toString(), "int cast");
           return nullptr;
         }
@@ -227,8 +230,8 @@ DECL(floatCast) {
       .Case([&](const StringValue *strV) -> unique_ptr<Value> {
         auto value = strV->getValue();
         double result;
-        auto success = value.getAsDouble(result);
-        if (!success) {
+        auto fail = value.getAsDouble(result);
+        if (fail) {
           report(range, diag, error_cast, strV->toString(), "float");
           return nullptr;
         }
@@ -296,6 +299,56 @@ DECL(type) {
       .Default([&](const Value *) -> unique_ptr<Value> {
         llvm_unreachable("all type of value is handled");
       });
+}
+
+DECL(input) {
+  if (args.size() != 0) {
+    report(range, diag, error_invalid_argument_size, "input", 0, args.size());
+    return nullptr;
+  }
+
+  string input;
+
+  char ch;
+  if (!std::getline(std::cin, input) && input.empty()) {
+    report(range, diag, error_input);
+    return nullptr;
+  }
+
+  return StringValue::create(input);
+}
+
+DECL(split) {
+  if (args.empty() || args.size() > 2) {
+    report(range, diag, error_invalid_argument_size, "split", "1 or 2",
+           args.size());
+    return nullptr;
+  }
+
+  auto value = args[0].get();
+  if (!value->isa<StringValue>()) {
+    report(range, diag, error_unexpected_type, "str", value->toString());
+    return nullptr;
+  }
+
+  auto strValue = value->cast<StringValue>();
+  StringRef sep = " ";
+  if (args.size() == 2) {
+    auto sepValue = args[1].get();
+    if (!sepValue->isa<StringValue>()) {
+      report(range, diag, error_unexpected_type, "str", sepValue->toString());
+      return nullptr;
+    }
+    sep = sepValue->cast<StringValue>()->getValue();
+  }
+
+  auto str = strValue->getValue();
+  auto splitResult = llvm::split(str, sep);
+  SmallVector<unique_ptr<Value>> newValues = llvm::map_to_vector(
+      splitResult, [&](StringRef element) -> unique_ptr<Value> {
+        return StringValue::create(element);
+      });
+  return ListValue::create(context, newValues);
 }
 
 #undef DECL

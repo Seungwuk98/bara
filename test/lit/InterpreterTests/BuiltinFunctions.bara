@@ -1,0 +1,61 @@
+// RUN: bara %s -interpret < %S/BuiltinFunctionsInput.txt | FileCheck %s
+
+print(help(push));
+// CHECK: <push>
+// CHECK-NEXT: usage: push(list, value)
+// CHECK-NEXT: push value to list
+
+print(str(1) == "1");
+// CHECK: true
+
+print(format("{}", 1) == "1");
+// CHECK: true
+
+print(format("{} + {}", 1, 2) == "1 + 2");
+// CHECK: true
+
+print(format("{{}}", 1) == "{1}");
+// CHECK: true
+
+print(len([1, 2, 3]) == 3);
+// CHECK: true
+
+
+print(int(1.0) == 1);
+// CHECK: true
+
+print(float(1) == 1.0);
+// CHECK: true
+
+print(bool(1));
+// CHECK: true
+
+print(bool(0));
+// CHECK: false
+
+print(type(1));
+// CHECK: int
+
+print(type(1.0));
+// CHECK: float
+
+print(type("1"));
+// CHECK: str
+
+print(type([1, 2, 3]));
+// CHECK: list
+
+print(type((1, 2, 3)));
+// CHECK: tuple
+
+print(type(true));
+// CHECK: bool
+
+print(type(false));
+// CHECK: bool
+
+print(input());
+// CHECK: capybara!
+
+print(split(input()));
+// CHECK: [1, 2, 3, 4, 5]

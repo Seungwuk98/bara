@@ -243,7 +243,7 @@ private:
 
 class BuiltinFunctionValue final : public Value {
   using funcBodyType = llvm::function_ref<unique_ptr<Value>(
-      ArrayRef<unique_ptr<Value>>, Diagnostic &, SMRange)>;
+      ArrayRef<unique_ptr<Value>>, Diagnostic &, SMRange, MemoryContext *)>;
 
   BuiltinFunctionValue(StringRef name, StringRef helpMsg, funcBodyType func)
       : Value(ValueKind::BuiltinFunction), name(name), helpMsg(helpMsg),

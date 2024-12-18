@@ -4,6 +4,7 @@ add_unit_test(
   LiteralTests.cpp
   ListTests.cpp
   TupleTests.cpp
+  CastTests.cpp
   PRIVATE
   BaraAST
   BaraContext 

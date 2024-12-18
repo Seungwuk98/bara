@@ -194,7 +194,7 @@ unique_ptr<StringValue> StringValue::create(StringRef value) {
 }
 
 void ValuePrintVisitor::visit(const StringValue &value) {
-  printer << '"' << value.getValue() << '"';
+  printer << value.getValue();
 }
 
 void ToBoolVisitor::visit(const StringValue &value) {

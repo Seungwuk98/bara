@@ -47,5 +47,13 @@ BUILTIN_FUNC(type, "type", R"(<type>
 usage: type(value)
 get type of value to string
 )")
+BUILTIN_FUNC(input, "input", R"(<input>
+usage: input()
+get input from stdin
+)")
+BUILTIN_FUNC(split, "split", R"(<split>
+usage: split(string, separator)
+split string with separator
+)")
 
 #undef BUILTIN_FUNC

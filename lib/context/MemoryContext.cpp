@@ -7,7 +7,7 @@ namespace BuiltinFn {
 
 #define BUILTIN_FUNC(Name, Identifier, Help)                                   \
   extern unique_ptr<Value> Name(ArrayRef<unique_ptr<Value>>, Diagnostic &,     \
-                                SMRange);
+                                SMRange, MemoryContext *);
 #include "bara/interpreter/BuiltinFunctions.def"
 
 } // namespace BuiltinFn
