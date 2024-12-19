@@ -227,7 +227,6 @@ private:
                 llvm::formatv(ParseDiagnostic::getDiagMsg(kind),
                               std::forward<Args>(args)...)
                     .str());
-    assert(ParseDiagnostic::getDiagKind(kind) != llvm::SourceMgr::DK_Error);
   }
 
   struct RangeCapture {

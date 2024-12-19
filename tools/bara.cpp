@@ -1,4 +1,5 @@
 #include "bara/diagnostic/Diagnostic.h"
+#include "bara/interpreter/REPL.h"
 #include "bara/interpreter/StmtInterpreter.h"
 #include "bara/interpreter/Value.h"
 #include "bara/parser/Parser.h"
@@ -48,6 +49,9 @@ void dump(llvm::function_ref<void(raw_ostream &)> fn) {
 int baraMain() {
   llvm::SourceMgr sourceMgr;
   Diagnostic diag(sourceMgr);
+
+  if (cl::input == "-" && bara::cl::action == cl::Interpret)
+    return runREPLMain();
 
   auto inputBufferOrErr = llvm::MemoryBuffer::getFileOrSTDIN(bara::cl::input);
   if (inputBufferOrErr.getError()) {

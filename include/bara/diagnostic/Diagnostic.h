@@ -24,6 +24,8 @@ public:
     errorCnt += kind == llvm::SourceMgr::DK_Error;
   }
 
+  void reset() { errorCnt = 0; }
+
 private:
   size_t errorCnt;
   llvm::SourceMgr &srcMgr;

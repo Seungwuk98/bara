@@ -9,6 +9,7 @@ add_library(
   BinaryOperations.cpp
   BuiltinFunctions.cpp
   Environment.cpp
+  REPL.cpp
 )
 
 target_link_libraries(
