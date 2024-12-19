@@ -25,7 +25,7 @@ void REPL::eval(StringRef line) {
   lines.emplace_back(line);
   auto lineNumber = lines.size();
   auto lineBuffer = llvm::MemoryBuffer::getMemBuffer(
-      line, (llvm::formatv("<REPL line:{0}>", lineNumber).str()));
+      lines.back(), (llvm::formatv("<REPL line:{0}>", lineNumber).str()));
   auto idx = srcMgr.AddNewSourceBuffer(std::move(lineBuffer), SMLoc());
   auto buffer = srcMgr.getMemoryBuffer(idx);
 

@@ -35,7 +35,7 @@ private:
 
   Environment::Scope scope;
 
-  vector<StringRef> lines;
+  vector<string> lines;
 
   friend int runREPLMain();
 };
