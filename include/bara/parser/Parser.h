@@ -14,7 +14,7 @@ public:
 public:
   Program *parse();
 
-  /// Expression ::= LogicalOrExpression
+  /// Expression ::= ConditionalExpression
   Expression *parseExpression();
 
   /// Statement ::=
@@ -90,6 +90,12 @@ private:
   /// ParameterList ::= Parameter (',' Parameter)*
   /// Parameter ::= Pattern
   FunctionDeclaration *parseFunctionDeclaration();
+
+  /// ConditionalExpression ::=
+  ///   LogicalOrExpression
+  ///     ('?' ConditionalExpression ':' ConditionalExpression)?
+  Expression *parseConditionalExpression();
+
   /// LogicalOrExpression ::= LogicalAndExpression ('||' LogicalAndExpression)*
   Expression *parseLogicalOrExpression();
 

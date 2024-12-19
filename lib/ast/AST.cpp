@@ -980,6 +980,49 @@ void ASTEqualVisitor::visit(const UnaryExpression &other) {
 }
 
 //===----------------------------------------------------------------------===//
+/// ConditionalExpression
+//===----------------------------------------------------------------------===//
+
+ConditionalExpression *ConditionalExpression::create(SMRange range,
+                                                     ASTContext *context,
+                                                     Expression *cond,
+                                                     Expression *lhs,
+                                                     Expression *rhs) {
+  return context->make<ConditionalExpression>(range, cond, lhs, rhs);
+}
+
+void ASTPrintVisitor::visit(const ConditionalExpression &ast) {
+  ast.getCond()->accept(*this);
+  printer << " ? ";
+  ast.getThenExpr()->accept(*this);
+  printer << " : ";
+  ast.getElseExpr()->accept(*this);
+}
+
+void ASTEqualVisitor::visit(const ConditionalExpression &other) {
+  if (!thisAST->isa<ConditionalExpression>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisExpr = thisAST->cast<ConditionalExpression>();
+  if (!thisExpr->getCond()->isEqual(other.getCond())) {
+    equal = false;
+    return;
+  }
+
+  if (!thisExpr->getThenExpr()->isEqual(other.getThenExpr())) {
+    equal = false;
+    return;
+  }
+
+  if (!thisExpr->getElseExpr()->isEqual(other.getElseExpr())) {
+    equal = false;
+    return;
+  }
+}
+
+//===----------------------------------------------------------------------===//
 /// CallExpression
 //===----------------------------------------------------------------------===//
 

@@ -373,6 +373,26 @@ void RvExprInterpreter::visit(const UnaryExpression &expr) {
   }
 }
 
+void RvExprInterpreter::visit(const ConditionalExpression &expr) {
+  expr.getCond()->accept(*this);
+  if (diag.hasError())
+    return;
+  auto cond = std::move(result);
+
+  auto condBoolOpt = cond->toBool();
+  if (!condBoolOpt) {
+    stmtInterpreter->report(
+        expr.getCond()->getRange(),
+        InterpretDiagnostic::error_invalid_to_conver_boolean, cond->toString());
+    return;
+  }
+
+  if (*condBoolOpt)
+    expr.getThenExpr()->accept(*this);
+  else
+    expr.getElseExpr()->accept(*this);
+}
+
 void RvExprInterpreter::visit(const CallExpression &expr) {
   expr.getCallee()->accept(*this);
   if (diag.hasError())

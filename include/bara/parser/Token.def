@@ -48,6 +48,8 @@ TOKEN(AmpersandEqual) // &=
 TOKEN(VBarEqual)      // |=
 TOKEN(CaretEqual)     // ^=
 TOKEN(RightArrow)     // =>
+TOKEN(Question)       // ?
+TOKEN(Colon)          // :
 
 TOKEN(Identifier)
 TOKEN(IntegerLiteral)

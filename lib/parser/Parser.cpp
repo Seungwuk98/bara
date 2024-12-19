@@ -456,7 +456,33 @@ FunctionDeclaration *Parser::parseFunctionDeclaration() {
                                      params, stmts);
 }
 
-Expression *Parser::parseExpression() { return parseLogicalOrExpression(); }
+Expression *Parser::parseExpression() { return parseConditionalExpression(); }
+
+Expression *Parser::parseConditionalExpression() {
+  RangeCapture capture(*this);
+  auto *cond = parseLogicalOrExpression();
+  if (diag.hasError())
+    return nullptr;
+
+  if (peekIs<Token::Tok_Question>()) {
+    skip();
+    auto *thenExpr = parseConditionalExpression();
+    if (diag.hasError())
+      return nullptr;
+
+    if (consume<Token::Tok_Colon>())
+      return nullptr;
+
+    auto *elseExpr = parseConditionalExpression();
+    if (diag.hasError())
+      return nullptr;
+
+    return ConditionalExpression::create(capture.create(), context, cond,
+                                         thenExpr, elseExpr);
+  }
+
+  return cond;
+}
 
 Expression *Parser::parseLogicalOrExpression() {
   RangeCapture capture(*this);

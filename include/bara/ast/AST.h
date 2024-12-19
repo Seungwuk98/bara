@@ -568,6 +568,30 @@ private:
   Expression *expr;
 };
 
+/// ConditionalExpression ::= Expression '?' Expression ':' Expression
+class ConditionalExpression final
+    : public ASTBase<ConditionalExpression, Expression> {
+  friend class ASTContext;
+  ConditionalExpression(SMRange range, Expression *cond, Expression *thenExpr,
+                        Expression *elseExpr)
+      : ASTBase(range, ASTKind::ConditionalExpression), cond(cond),
+        thenExpr(thenExpr), elseExpr(elseExpr) {}
+
+public:
+  static ConditionalExpression *create(SMRange range, ASTContext *context,
+                                       Expression *cond, Expression *thenExpr,
+                                       Expression *elseExpr);
+
+  Expression *getCond() const { return cond; }
+  Expression *getThenExpr() const { return thenExpr; }
+  Expression *getElseExpr() const { return elseExpr; }
+
+private:
+  Expression *cond;
+  Expression *thenExpr;
+  Expression *elseExpr;
+};
+
 /// CallExpression ::= Expression '(' ArgumentList? ')'
 /// ArgumentList ::= Expression (',' Expression)*
 class CallExpression final

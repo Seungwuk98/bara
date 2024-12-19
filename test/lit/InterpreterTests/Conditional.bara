@@ -1,0 +1,10 @@
+// RUN: bara %s -interpret < %S/BuiltinFunctionsInput.txt | FileCheck %s
+
+print(true ? 1 : 2);
+// CHECK: 1
+
+print(false ? 1 : 2);
+// CHECK: 2
+
+print(true ? false ? 1 : 2 : 3);
+// CHECK: 2

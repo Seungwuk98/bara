@@ -178,6 +178,10 @@ void Lexer::lex() {
     kind = Token::Tok_RBracket;   return;
   case '~':
     kind = Token::Tok_Tilde;      return;
+  case '?':
+    kind = Token::Tok_Question;   return;
+  case ':':
+    kind = Token::Tok_Colon;      return;
   case '\\':
     kind = Token::Tok_BackSlash;  return;
 
