@@ -12,10 +12,7 @@ static unique_ptr<Value> null(const Value *) { return nullptr; }
 template <typename ConcreteVisitor>
 class BinaryOpVisitorImpl : public ConstValueVisitorBase<ConcreteVisitor> {
 public:
-  void init(const Value *r) {
-    this->r = r;
-    result.reset();
-  }
+  BinaryOpVisitorImpl(const Value *r) : r(r), result(nullptr) {}
 
   std::unique_ptr<Value> getResult() { return std::move(result); }
 
@@ -327,189 +324,135 @@ void ModVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void ModVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void ModVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
-class LtVisitor : public BinaryOpVisitorImpl<LtVisitor> {
-public:
-#define VALUE(Name) void visit(const Name##Value &l);
-#include "bara/interpreter/Value.def"
-};
-void LtVisitor::visit(const IntegerValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto value = l.getValue() < r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
-                 auto value = floatL < r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Default(null);
-}
-void LtVisitor::visit(const BoolValue &l) { result = nullptr; }
-void LtVisitor::visit(const FloatValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
-                 auto value = l.getValue() < floatR;
-                 return BoolValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto value = l.getValue() < r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Default(null);
-}
-void LtVisitor::visit(const StringValue &l) {
-  if (const auto *strR = r->dyn_cast<StringValue>()) {
-    auto value = l.getValue() < strR->getValue();
-    result = BoolValue::create(value);
-  } else
-    result = nullptr;
-}
-void LtVisitor::visit(const ListValue &l) { result = nullptr; }
-void LtVisitor::visit(const TupleValue &l) { result = nullptr; }
-void LtVisitor::visit(const NilValue &l) { result = nullptr; }
-void LtVisitor::visit(const FunctionValue &l) { result = nullptr; }
-void LtVisitor::visit(const LambdaValue &l) { result = nullptr; }
-void LtVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+namespace {
 
-class LeVisitor : public BinaryOpVisitorImpl<LeVisitor> {
-public:
-#define VALUE(Name) void visit(const Name##Value &l);
-#include "bara/interpreter/Value.def"
-};
-void LeVisitor::visit(const IntegerValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto value = l.getValue() <= r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
-                 auto value = floatL <= r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Default(null);
+static int compare(const IntegerValue *l, const IntegerValue *r) {
+  return l->getValue() - r->getValue();
 }
-void LeVisitor::visit(const BoolValue &l) { result = nullptr; }
-void LeVisitor::visit(const FloatValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
-                 auto value = l.getValue() <= floatR;
-                 return BoolValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto value = l.getValue() <= r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Default(null);
+static optional<int> compare(const IntegerValue *l, const FloatValue *r) {
+  auto floatL = APFloat(APFloat::IEEEdouble(), l->getValue());
+  auto cmp = floatL.compare(r->getValue());
+  if (cmp == APFloat::cmpLessThan)
+    return -1;
+  if (cmp == APFloat::cmpGreaterThan)
+    return 1;
+  if (cmp == APFloat::cmpUnordered)
+    return nullopt;
+  return 0;
 }
-void LeVisitor::visit(const StringValue &l) {
-  if (const auto *strR = r->dyn_cast<StringValue>()) {
-    auto value = l.getValue() <= strR->getValue();
-    result = BoolValue::create(value);
-  } else
-    result = nullptr;
+static optional<int> compare(const FloatValue *l, const IntegerValue *r) {
+  auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
+  auto cmpt = l->getValue().compare(floatR);
+  if (cmpt == APFloat::cmpLessThan)
+    return -1;
+  if (cmpt == APFloat::cmpGreaterThan)
+    return 1;
+  if (cmpt == APFloat::cmpUnordered)
+    return nullopt;
+  return 0;
 }
-void LeVisitor::visit(const ListValue &l) { result = nullptr; }
-void LeVisitor::visit(const TupleValue &l) { result = nullptr; }
-void LeVisitor::visit(const NilValue &l) { result = nullptr; }
-void LeVisitor::visit(const FunctionValue &l) { result = nullptr; }
-void LeVisitor::visit(const LambdaValue &l) { result = nullptr; }
-void LeVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+static optional<int> compare(const FloatValue *l, const FloatValue *r) {
+  auto cmp = l->getValue().compare(r->getValue());
+  if (cmp == APFloat::cmpLessThan)
+    return -1;
+  if (cmp == APFloat::cmpGreaterThan)
+    return 1;
+  if (cmp == APFloat::cmpUnordered)
+    return nullopt;
+  return 0;
+}
+static int compare(const StringValue *l, const StringValue *r) {
+  return l->getValue().compare(r->getValue());
+}
 
-class GtVisitor : public BinaryOpVisitorImpl<GtVisitor> {
-public:
-#define VALUE(Name) void visit(const Name##Value &l);
-#include "bara/interpreter/Value.def"
-};
-void GtVisitor::visit(const IntegerValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto value = l.getValue() > r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
-                 auto value = floatL > r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Default(null);
-}
-void GtVisitor::visit(const BoolValue &l) { result = nullptr; }
-void GtVisitor::visit(const FloatValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
-                 auto value = l.getValue() > floatR;
-                 return BoolValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto value = l.getValue() > r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Default(null);
-}
-void GtVisitor::visit(const StringValue &l) {
-  if (const auto *strR = r->dyn_cast<StringValue>()) {
-    auto value = l.getValue() > strR->getValue();
-    result = BoolValue::create(value);
-  } else
-    result = nullptr;
-}
-void GtVisitor::visit(const ListValue &l) { result = nullptr; }
-void GtVisitor::visit(const TupleValue &l) { result = nullptr; }
-void GtVisitor::visit(const NilValue &l) { result = nullptr; }
-void GtVisitor::visit(const FunctionValue &l) { result = nullptr; }
-void GtVisitor::visit(const LambdaValue &l) { result = nullptr; }
-void GtVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+} // namespace
 
-class GeVisitor : public BinaryOpVisitorImpl<GeVisitor> {
+class Comparator : public ConstValueVisitorBase<Comparator> {
 public:
 #define VALUE(Name) void visit(const Name##Value &l);
 #include "bara/interpreter/Value.def"
+
+  Comparator(const Value *r) : r(r) {}
+
+  optional<int> getResult() { return result; }
+
+  bool hasError() { return err; }
+
+private:
+  const Value *r;
+  bool err = false;
+  optional<int> result;
 };
-void GeVisitor::visit(const IntegerValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto value = l.getValue() >= r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
-                 auto value = floatL >= r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Default(null);
+
+void Comparator::visit(const IntegerValue &l) {
+  result = llvm::TypeSwitch<const Value *, optional<int>>(r)
+               .Case([&](const IntegerValue *r) { return compare(&l, r); })
+               .Case([&](const FloatValue *r) { return compare(&l, r); })
+               .Default([&](const Value *) { return nullopt; });
 }
-void GeVisitor::visit(const BoolValue &l) { result = nullptr; }
-void GeVisitor::visit(const FloatValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
-                 auto value = l.getValue() >= floatR;
-                 return BoolValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto value = l.getValue() >= r->getValue();
-                 return BoolValue::create(value);
-               })
-               .Default(null);
+void Comparator::visit(const BoolValue &l) { err = true; }
+void Comparator::visit(const FloatValue &l) {
+  result = llvm::TypeSwitch<const Value *, optional<int>>(r)
+               .Case([&](const IntegerValue *r) { return compare(&l, r); })
+               .Case([&](const FloatValue *r) { return compare(&l, r); })
+               .Default([&](const Value *) { return nullopt; });
 }
-void GeVisitor::visit(const StringValue &l) {
-  if (const auto *strR = r->dyn_cast<StringValue>()) {
-    auto value = l.getValue() >= strR->getValue();
-    result = BoolValue::create(value);
+void Comparator::visit(const StringValue &l) {
+  if (const auto *strR = r->dyn_cast<StringValue>())
+    result = compare(&l, strR);
+  else
+    err = true;
+}
+void Comparator::visit(const ListValue &l) {
+  if (const auto *listR = r->dyn_cast<ListValue>()) {
+    auto lsize = l.size();
+    auto rsize = listR->size();
+    auto size = std::min(lsize, rsize);
+
+    for (auto idx = 0; idx < size; ++idx) {
+      Comparator cmp(listR->getElement(idx)->view());
+      l.getElement(idx)->view()->accept(cmp);
+      if (cmp.hasError()) {
+        err = true;
+        return;
+      }
+      auto cmpResult = cmp.getResult();
+      if (!cmpResult || *cmpResult != 0) {
+        result = cmpResult;
+        return;
+      }
+    }
+    result = lsize - rsize;
   } else
-    result = nullptr;
+    err = true;
 }
-void GeVisitor::visit(const ListValue &l) { result = nullptr; }
-void GeVisitor::visit(const TupleValue &l) { result = nullptr; }
-void GeVisitor::visit(const NilValue &l) { result = nullptr; }
-void GeVisitor::visit(const FunctionValue &l) { result = nullptr; }
-void GeVisitor::visit(const LambdaValue &l) { result = nullptr; }
-void GeVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void Comparator::visit(const TupleValue &l) {
+  if (const auto *tupleR = r->dyn_cast<TupleValue>()) {
+    auto lsize = l.size();
+    auto rsize = tupleR->size();
+    auto size = std::min(lsize, rsize);
+
+    for (auto idx = 0; idx < size; ++idx) {
+      Comparator cmp(tupleR->getElement(idx));
+      l.getElement(idx)->accept(cmp);
+      if (cmp.hasError()) {
+        err = true;
+        return;
+      }
+      auto cmpResult = cmp.getResult();
+      if (!cmpResult || *cmpResult != 0) {
+        result = cmpResult;
+        return;
+      }
+    }
+    result = lsize - rsize;
+  } else
+    err = true;
+}
+void Comparator::visit(const NilValue &l) { err = true; }
+void Comparator::visit(const FunctionValue &l) { err = true; }
+void Comparator::visit(const LambdaValue &l) { err = true; }
+void Comparator::visit(const BuiltinFunctionValue &l) { err = true; }
 
 class BitAndVisitor : public BinaryOpVisitorImpl<BitAndVisitor> {
 public:
@@ -721,8 +664,7 @@ void ShrVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 namespace BinaryOp {
 #define BINARY_FUNC(funcName, VisitorName)                                     \
   unique_ptr<Value> funcName(const Value *l, const Value *r) {                 \
-    VisitorName visitor;                                                       \
-    visitor.init(r);                                                           \
+    VisitorName visitor(r);                                                    \
     l->accept(visitor);                                                        \
     return visitor.getResult();                                                \
   }
@@ -731,15 +673,32 @@ BINARY_FUNC(sub, SubVisitor)
 BINARY_FUNC(mul, MulVisitor)
 BINARY_FUNC(div, DivVisitor)
 BINARY_FUNC(mod, ModVisitor)
-BINARY_FUNC(lt, LtVisitor)
-BINARY_FUNC(le, LeVisitor)
-BINARY_FUNC(gt, GtVisitor)
-BINARY_FUNC(ge, GeVisitor)
 BINARY_FUNC(bitAnd, BitAndVisitor)
 BINARY_FUNC(bitOr, BitOrVisitor)
 BINARY_FUNC(bitXor, BitXorVisitor)
 BINARY_FUNC(shl, ShlVisitor)
 BINARY_FUNC(shr, ShrVisitor)
+
+#undef BINARY_FUNC
+
+#define COMPARE_FUNC(funcName, op)                                             \
+  unique_ptr<Value> funcName(const Value *l, const Value *r) {                 \
+    Comparator cmp(r);                                                         \
+    l->accept(cmp);                                                            \
+    if (cmp.hasError())                                                        \
+      return nullptr;                                                          \
+    auto result = cmp.getResult();                                             \
+    if (!result)                                                               \
+      return BoolValue::create(false);                                         \
+    return BoolValue::create(*result op 0);                                    \
+  }
+
+COMPARE_FUNC(gt, >)
+COMPARE_FUNC(ge, >=)
+COMPARE_FUNC(lt, <)
+COMPARE_FUNC(le, <=)
+
+#undef COMPARE_FUNC
 
 } // namespace BinaryOp
 } // namespace bara
