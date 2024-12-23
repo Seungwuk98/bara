@@ -1,0 +1,43 @@
+
+fn partition(list, start, end) {
+  var pivot = list[start];
+
+  var i = start + 1;
+  for (var j = i; j <= end; j += 1) {
+    if list[j] < pivot {
+      (list[i], list[j]) = (list[j], list[i]);
+      i += 1;
+    }
+  }
+
+  (list[start], list[i - 1]) = (list[i - 1], list[start]);
+  return i - 1;
+}
+
+fn quickSortImpl(list, start, end) {
+  if start < end {
+    var pivotIndex = random(start, end + 1); 
+    (list[start], list[pivotIndex]) = (list[pivotIndex], list[start]);
+    pivotIndex = partition(list, start, end);
+    quickSortImpl(list, start, pivotIndex - 1);
+    quickSortImpl(list, pivotIndex + 1, end);
+  }
+}
+
+fn quickSort(list) {
+  quickSortImpl(list, 0, len(list) - 1);
+  return list; 
+}
+
+var N = int(input());
+var list = [];
+
+for (var i = 0; i < N; i += 1) {
+  push(list, int(input()));
+}
+
+quickSort(list);
+
+for (var i = 0; i < N; i += 1) {
+  print(list[i]);
+}

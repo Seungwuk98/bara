@@ -1,0 +1,27 @@
+
+fn map(lambda, array) {
+  var newArray = [];
+  for (var i = 0; i < len(array); i += 1) {
+    push(newArray, lambda(array[i]));
+  }
+  return newArray;
+}
+
+var NM = map(int, split(input()));
+var N = NM[0];
+var M = NM[1];
+
+var inputArray = map(int, split(input()));
+
+var prefixSum = [0];
+
+for (var i = 0; i < N; i += 1) {
+  push(prefixSum, prefixSum[i] + inputArray[i]);
+}
+
+for (var i = 0; i < M; i += 1) {
+  var lr = map(int, split(input()));
+  var l = lr[0];
+  var r = lr[1];
+  print(prefixSum[r] - prefixSum[l - 1]);
+}
