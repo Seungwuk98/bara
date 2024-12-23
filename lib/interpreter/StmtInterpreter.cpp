@@ -74,9 +74,6 @@ void StmtInterpreter::visit(const ExpressionStatement &stmt) {
 }
 
 void StmtInterpreter::visit(const IfStatement &stmt) {
-  stmt.getCond()->accept(*rvInterpreter);
-  if (isTerminated())
-    return;
   auto condV = rvInterpret(*stmt.getCond());
   if (isTerminated())
     return;
@@ -88,19 +85,10 @@ void StmtInterpreter::visit(const IfStatement &stmt) {
     return;
   }
 
-  if (*condOpt) {
-    for (const auto &thenStmt : stmt.getThenStmts()) {
-      thenStmt->accept(*this);
-      if (isTerminated())
-        return;
-    }
-  } else if (stmt.hasElse()) {
-    for (const auto &elseStmt : stmt.getElseStmts()) {
-      elseStmt->accept(*this);
-      if (isTerminated())
-        return;
-    }
-  }
+  if (*condOpt)
+    stmt.getThenStmt()->accept(*this);
+  else if (stmt.hasElse())
+    stmt.getElseStmt()->accept(*this);
 }
 
 void StmtInterpreter::visit(const WhileStatement &stmt) {
@@ -108,19 +96,17 @@ void StmtInterpreter::visit(const WhileStatement &stmt) {
   if (stmt.isDoWhile()) {
     bool cond;
     do {
-      for (const auto &bodyStmt : stmt.getBody()) {
-        bodyStmt->accept(*this);
-        if (diag.hasError())
-          return;
-        else if (continueFlag) {
-          continueFlag = nullptr;
-          continue;
-        } else if (breakFlag) {
-          breakFlag = nullptr;
-          break;
-        } else if (returnValue) {
-          return;
-        }
+      stmt.getBody()->accept(*this);
+      if (diag.hasError())
+        return;
+      else if (continueFlag) {
+        continueFlag = nullptr;
+        continue;
+      } else if (breakFlag) {
+        breakFlag = nullptr;
+        break;
+      } else if (returnValue) {
+        return;
       }
 
       auto condV = rvInterpret(*stmt.getCond());
@@ -153,19 +139,17 @@ void StmtInterpreter::visit(const WhileStatement &stmt) {
       if (!*condOpt)
         break;
 
-      for (const auto &bodyStmt : stmt.getBody()) {
-        bodyStmt->accept(*this);
-        if (diag.hasError())
-          return;
-        else if (continueFlag) {
-          continueFlag = nullptr;
-          continue;
-        } else if (breakFlag) {
-          breakFlag = nullptr;
-          break;
-        } else if (returnValue) {
-          return;
-        }
+      stmt.getBody()->accept(*this);
+      if (diag.hasError())
+        return;
+      else if (continueFlag) {
+        continueFlag = nullptr;
+        continue;
+      } else if (breakFlag) {
+        breakFlag = nullptr;
+        break;
+      } else if (returnValue) {
+        return;
       }
     }
   }
@@ -199,19 +183,17 @@ void StmtInterpreter::visit(const ForStatement &stmt) {
         break;
     }
     Environment::Scope bodyScope(env);
-    for (const auto &bodyStmt : stmt.getBody()) {
-      bodyStmt->accept(*this);
-      if (diag.hasError())
-        return;
-      else if (continueFlag) {
-        continueFlag = nullptr;
-        continue;
-      } else if (breakFlag) {
-        breakFlag = nullptr;
-        break;
-      } else if (returnValue) {
-        return;
-      }
+    stmt.getBody()->accept(*this);
+    if (diag.hasError())
+      return;
+    else if (continueFlag) {
+      continueFlag = nullptr;
+      continue;
+    } else if (breakFlag) {
+      breakFlag = nullptr;
+      break;
+    } else if (returnValue) {
+      return;
     }
 
     if (stepOpt) {

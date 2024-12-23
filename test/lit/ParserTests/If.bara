@@ -1,0 +1,24 @@
+// RUN: bara %s -ast-print | FileCheck %s
+
+
+//===----------------------------------------------------------------------===//
+/// If 
+//===----------------------------------------------------------------------===//
+
+var a = random();
+// CHECK: var a = random();
+
+if a > 0 {
+  print("a is positive");
+} else if a < 0 {
+  print("a is negative");
+} else {
+  print("a is zero");
+}
+// CHECK-LABEL: if a > 0
+// CHECK-NEXT:   print("a is positive");
+// CHECK-NEXT: else if a < 0
+// CHECK-NEXT:   print("a is negative");
+// CHECK-NEXT: else
+// CHECK-NEXT:   print("a is zero");
+

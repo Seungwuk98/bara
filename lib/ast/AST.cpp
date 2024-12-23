@@ -4,6 +4,20 @@
 
 namespace bara {
 
+bool Statement::classof(const AST *ast) {
+  return false
+#define STATEMENT(NAME) || ast->isa<NAME>()
+#include "bara/ast/Statement.def"
+      ;
+}
+
+bool Expression::classof(const AST *ast) {
+  return false
+#define EXPRESSION(NAME) || ast->isa<NAME>()
+#include "bara/ast/Expression.def"
+      ;
+}
+
 class ASTPrintVisitor : public ConstASTVisitorBase<ASTPrintVisitor
 #define AST_KIND(NAME) , NAME
 #include "bara/ast/AST.def"
@@ -244,49 +258,32 @@ void ASTEqualVisitor::visit(const ExpressionStatement &other) {
 // IfStatement
 //===----------------------------------------------------------------------===//
 
-IfStatement *
-IfStatement::create(SMRange range, ASTContext *context, Expression *cond,
-                    ArrayRef<Statement *> thenStmt,
-                    std::optional<ArrayRef<Statement *>> elseStmt) {
-  auto totalCnt = thenStmt.size() + (elseStmt ? elseStmt->size() : 0);
-  auto allocSize = totalSizeToAlloc<Statement *>(totalCnt);
-  void *mem = context->alloc(allocSize);
+IfStatement *IfStatement::create(SMRange range, ASTContext *context,
+                                 Expression *cond, CompoundStatement *thenStmt,
+                                 CompoundStatement *elseStmt) {
+  return context->make<IfStatement>(range, cond, thenStmt, elseStmt);
+}
 
-  auto ifStmt = new (mem)
-      IfStatement(range, cond, thenStmt.size(),
-                  elseStmt ? std::optional(elseStmt->size()) : std::nullopt);
-  std::uninitialized_copy(thenStmt.begin(), thenStmt.end(),
-                          ifStmt->getTrailingObjects<Statement *>());
-  if (elseStmt) {
-    std::uninitialized_copy(elseStmt->begin(), elseStmt->end(),
-                            ifStmt->getTrailingObjects<Statement *>() +
-                                thenStmt.size());
-  }
-  return ifStmt;
+IfStatement *IfStatement::create(SMRange range, ASTContext *context,
+                                 Expression *cond, CompoundStatement *thenStmt,
+                                 IfStatement *elseStmt) {
+  return context->make<IfStatement>(range, cond, thenStmt, elseStmt);
+}
+
+IfStatement *IfStatement::create(SMRange range, ASTContext *context,
+                                 Expression *cond,
+                                 CompoundStatement *thenStmt) {
+  return context->make<IfStatement>(range, cond, thenStmt, nullopt);
 }
 
 void ASTPrintVisitor::visit(const IfStatement &ast) {
   printer << "if ";
   ast.getCond()->accept(*this);
-  printer << " {";
-  {
-    ASTPrinter::AddIndentScope scope(printer);
-    for (auto stmt : ast.getThenStmts()) {
-      printer.ln();
-      stmt->accept(*this);
-    }
-  }
-  printer.ln() << "}";
+  ast.getThenStmt()->accept(*this);
+
   if (ast.hasElse()) {
-    printer << " else {";
-    {
-      ASTPrinter::AddIndentScope scope(printer);
-      for (auto stmt : ast.getElseStmts()) {
-        printer.ln();
-        stmt->accept(*this);
-      }
-    }
-    printer.ln() << "}";
+    printer << " else ";
+    ast.getElseStmt()->accept(*this);
   }
 }
 
@@ -302,9 +299,7 @@ void ASTEqualVisitor::visit(const IfStatement &other) {
     return;
   }
 
-  auto thenEq = isEqualASTArray<Statement *>(thisStmt->getThenStmts(),
-                                             other.getThenStmts());
-  if (!thenEq) {
+  if (!thisStmt->getThenStmt()->isEqual(other.getThenStmt())) {
     equal = false;
     return;
   }
@@ -314,10 +309,8 @@ void ASTEqualVisitor::visit(const IfStatement &other) {
     return;
   }
 
-  if (thisStmt->hasElse()) {
-    equal = isEqualASTArray<Statement *>(thisStmt->getElseStmts(),
-                                         other.getElseStmts());
-  }
+  equal = !thisStmt->hasElse() ||
+          thisStmt->getElseStmt()->isEqual(other.getElseStmt());
 }
 
 //===----------------------------------------------------------------------===//
@@ -326,42 +319,22 @@ void ASTEqualVisitor::visit(const IfStatement &other) {
 
 WhileStatement *WhileStatement::create(SMRange range, ASTContext *context,
                                        Expression *cond,
-                                       ArrayRef<Statement *> body,
+                                       CompoundStatement *body,
                                        bool isDoWhile) {
-  auto allocSize = totalSizeToAlloc<Statement *>(body.size());
-  void *mem = context->alloc(allocSize);
-  auto whileStmt =
-      new (mem) WhileStatement(range, cond, body.size(), isDoWhile);
-  std::uninitialized_copy(body.begin(), body.end(),
-                          whileStmt->getTrailingObjects<Statement *>());
-  return whileStmt;
+  return context->make<WhileStatement>(range, cond, body, isDoWhile);
 }
 
 void ASTPrintVisitor::visit(const WhileStatement &ast) {
   if (ast.isDoWhile()) {
-    printer << "do {";
-    {
-      ASTPrinter::AddIndentScope scope(printer);
-      for (auto stmt : ast.getBody()) {
-        printer.ln();
-        stmt->accept(*this);
-      }
-    }
-    printer.ln() << "} while ";
+    printer << "do ";
+    ast.getBody()->accept(*this);
+    printer << " while ";
     ast.getCond()->accept(*this);
     printer << ";";
   } else {
     printer << "while ";
     ast.getCond()->accept(*this);
-    printer << "{";
-    {
-      ASTPrinter::AddIndentScope scope(printer);
-      for (auto stmt : ast.getBody()) {
-        printer.ln();
-        stmt->accept(*this);
-      }
-    }
-    printer.ln() << "}";
+    ast.getBody()->accept(*this);
   }
 }
 
@@ -398,19 +371,20 @@ ForStatement *ForStatement::create(SMRange range, ASTContext *context,
                                    std::optional<Statement *> decl,
                                    std::optional<Expression *> cond,
                                    std::optional<Statement *> step,
-                                   ArrayRef<Statement *> body) {
-  auto totalCnt = bool(decl) + bool(step) + body.size();
+                                   CompoundStatement *body) {
+  auto hasDecl = decl.has_value();
+  auto hasStep = step.has_value();
+  auto totalCnt = hasDecl + hasStep + 1;
   auto allocSize = totalSizeToAlloc<Statement *>(totalCnt);
   void *mem = context->alloc(allocSize);
-  auto *forStmt = new (mem) ForStatement(range, decl.has_value(), cond,
-                                         step.has_value(), body.size());
+  auto *forStmt = new (mem) ForStatement(range, hasDecl, cond, hasStep);
   std::size_t idx = 0;
   auto *stmts = forStmt->getTrailingObjects<Statement *>();
-  if (decl)
+  if (hasDecl)
     stmts[idx++] = static_cast<Statement *>(*decl);
-  if (step)
+  if (hasStep)
     stmts[idx++] = static_cast<Statement *>(*step);
-  std::uninitialized_copy(body.begin(), body.end(), stmts + idx);
+  stmts[idx] = body;
   return forStmt;
 }
 
@@ -427,9 +401,9 @@ std::optional<Statement *> ForStatement::getStep() const {
         getTrailingObjects<Statement *>()[hasDecl]);
   return std::nullopt;
 }
-std::size_t ForStatement::getBodySize() const { return bodySize; }
-ArrayRef<Statement *> ForStatement::getBody() const {
-  return {getTrailingObjects<Statement *>() + hasDecl + hasStep, bodySize};
+CompoundStatement *ForStatement::getBody() const {
+  return (*(getTrailingObjects<Statement *>() + hasDecl + hasStep))
+      ->cast<CompoundStatement>();
 }
 
 void ASTPrintVisitor::visit(const ForStatement &ast) {
@@ -469,15 +443,8 @@ void ASTPrintVisitor::visit(const ForStatement &ast) {
     }
   }
 
-  printer << ") {";
-  {
-    ASTPrinter::AddIndentScope scope(printer);
-    for (auto stmt : ast.getBody()) {
-      printer.ln();
-      stmt->accept(*this);
-    }
-  }
-  printer.ln() << "}";
+  printer << ") ";
+  ast.getBody()->accept(*this);
 }
 
 void ASTEqualVisitor::visit(const ForStatement &other) {
@@ -810,42 +777,34 @@ void ASTEqualVisitor::visit(const MatchExpression &other) {
 
 LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
                                            ArrayRef<StringRef> params,
-                                           ArrayRef<Statement *> body) {
-  auto allocSize =
-      totalSizeToAlloc<StringRef, AST *>(params.size(), body.size());
+                                           Expression *body) {
+  auto allocSize = totalSizeToAlloc<StringRef>(params.size());
   void *mem = context->alloc(allocSize);
-  auto *lambdaExpr =
-      new (mem) LambdaExpression(range, params.size(), false, body.size());
+  auto *lambdaExpr = new (mem) LambdaExpression(range, params.size(), body);
   std::uninitialized_copy(params.begin(), params.end(),
                           lambdaExpr->getTrailingObjects<StringRef>());
-  std::uninitialized_copy(
-      body.begin(), body.end(),
-      reinterpret_cast<Statement **>(lambdaExpr->getTrailingObjects<AST *>()));
   return lambdaExpr;
 }
 
 LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
                                            ArrayRef<StringRef> params,
-                                           Expression *expr) {
-  auto allocSize = totalSizeToAlloc<StringRef, AST *>(params.size(), 1);
+                                           CompoundStatement *stmt) {
+  auto allocSize = totalSizeToAlloc<StringRef>(params.size());
   void *mem = context->alloc(allocSize);
-  auto *lambdaExpr = new (mem) LambdaExpression(range, params.size(), true, 1);
+  auto *lambdaExpr = new (mem) LambdaExpression(range, params.size(), stmt);
   std::uninitialized_copy(params.begin(), params.end(),
                           lambdaExpr->getTrailingObjects<StringRef>());
-  *(reinterpret_cast<Expression **>(lambdaExpr->getTrailingObjects<AST *>())) =
-      expr;
   return lambdaExpr;
 }
 
-Expression *LambdaExpression::getExpr() const {
+Expression *LambdaExpression::getExprBody() const {
   assert(isExprBody());
-  return *reinterpret_cast<Expression *const *>(getTrailingObjects<AST *>());
+  return body->cast<Expression>();
 }
 
-ArrayRef<Statement *> LambdaExpression::getStmtBody() const {
+CompoundStatement *LambdaExpression::getStmtBody() const {
   assert(!isExprBody());
-  return {reinterpret_cast<Statement *const *>(getTrailingObjects<AST *>()),
-          getBodySize()};
+  return body->cast<CompoundStatement>();
 }
 
 void ASTPrintVisitor::visit(const LambdaExpression &ast) {
@@ -856,19 +815,10 @@ void ASTPrintVisitor::visit(const LambdaExpression &ast) {
       printer << ", ";
   }
   printer << " => ";
-  if (ast.isExprBody()) {
-    ast.getExpr()->accept(*this);
-  } else {
-    printer << "{";
-    {
-      ASTPrinter::AddIndentScope scope(printer);
-      for (auto stmt : ast.getStmtBody()) {
-        printer.ln();
-        stmt->accept(*this);
-      }
-    }
-    printer.ln() << "}";
-  }
+  if (ast.isExprBody())
+    ast.getExprBody()->accept(*this);
+  else
+    ast.getStmtBody()->accept(*this);
 }
 
 void ASTEqualVisitor::visit(const LambdaExpression &other) {
@@ -895,15 +845,9 @@ void ASTEqualVisitor::visit(const LambdaExpression &other) {
     return;
   }
 
-  if (thisExpr->isExprBody()) {
-    if (!thisExpr->getExpr()->isEqual(other.getExpr())) {
-      equal = false;
-      return;
-    }
-  } else {
-    equal = isEqualASTArray<Statement *>(thisExpr->getStmtBody(),
-                                         other.getStmtBody());
-  }
+  equal = thisExpr->isExprBody()
+              ? thisExpr->getExprBody()->isEqual(other.getExprBody())
+              : thisExpr->getStmtBody()->isEqual(other.getStmtBody());
 }
 
 //===----------------------------------------------------------------------===//

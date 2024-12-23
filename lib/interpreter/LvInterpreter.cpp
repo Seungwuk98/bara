@@ -1,5 +1,6 @@
 #include "bara/ast/AST.h"
 #include "bara/interpreter/ExprInterpreter.h"
+#include "bara/interpreter/Memory.h"
 #include <variant>
 
 namespace bara {
@@ -25,6 +26,17 @@ void LvExprInterpreter::visit(const IndexExpression &expr) {
   result = std::get<Memory *>(lv);
 }
 
+void LvExprInterpreter::visit(const TupleExpression &expr) {
+  SmallVector<Memory *> mems;
+  for (auto *expr : expr.getExprs()) {
+    expr->accept(*this);
+    if (diag.hasError())
+      return;
+    mems.push_back(result);
+  }
+  result = TupleMemory::create(context, mems);
+}
+
 #define EXPRESSION(Name)                                                       \
   void LvExprInterpreter::visit(const Name &expr) {                            \
     stmtInterpreter->report(                                                   \
@@ -39,7 +51,6 @@ EXPRESSION(UnaryExpression)
 EXPRESSION(ConditionalExpression)
 EXPRESSION(CallExpression)
 EXPRESSION(ArrayExpression)
-EXPRESSION(TupleExpression)
 EXPRESSION(GroupExpression)
 EXPRESSION(IntegerLiteral)
 EXPRESSION(BooleanLiteral)

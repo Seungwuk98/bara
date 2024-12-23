@@ -1,0 +1,8 @@
+// RUN: bara %s -interpret | FileCheck %s
+
+var (a, b) = (1, 2);
+(a, b) = (b, a);
+
+print(a, b);
+// CHECK: 2 1
+

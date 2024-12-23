@@ -35,6 +35,11 @@ TEST(INTERPRETER_TEST_SUITE, CastTests) {
   ASSERT_TRUE(strToInt->isa<IntegerValue>());
   ASSERT_EQ(strToInt->cast<IntegerValue>()->getValue(), 1);
 
+  auto strToInt2 = tests.eval("int(\"-1\")");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(strToInt2->isa<IntegerValue>());
+  ASSERT_EQ(strToInt2->cast<IntegerValue>()->getValue(), -1);
+
   auto strToFloat = tests.eval("float(\"1.0\")");
   ASSERT_FALSE(tests.hasError());
   ASSERT_TRUE(strToFloat->isa<FloatValue>());

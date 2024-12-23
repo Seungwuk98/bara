@@ -222,64 +222,60 @@ private:
 
 /// IfStatement ::=
 ///   'if' Expression '{' Statement* '}' ('else' '{' Statement* '}')?
-class IfStatement final : public ASTBase<IfStatement, Statement>,
-                          public TrailingObjects<IfStatement, Statement *> {
-  IfStatement(SMRange range, Expression *cond, size_t thenSize,
-              optional<size_t> elseSize)
-      : ASTBase(range, ASTKind::IfStatement), cond(cond), thenSize(thenSize),
-        elseSize(elseSize) {}
+///   | 'if' Expression '{' Statement* '}' 'else' IfStatement
+class IfStatement final : public ASTBase<IfStatement, Statement> {
+  friend class ASTContext;
+  IfStatement(SMRange range, Expression *cond, CompoundStatement *thenStmt,
+              optional<Statement *> elseStmt)
+      : ASTBase(range, ASTKind::IfStatement), cond(cond), thenStmt(thenStmt),
+        elseStmt(elseStmt) {}
 
 public:
-  static IfStatement *
-  create(SMRange range, ASTContext *context, Expression *cond,
-         ArrayRef<Statement *> thenStmt,
-         optional<ArrayRef<Statement *>> elseStmt = nullopt);
+  static IfStatement *create(SMRange range, ASTContext *context,
+                             Expression *cond, CompoundStatement *thenStmt,
+                             CompoundStatement *elseStmt);
+
+  static IfStatement *create(SMRange range, ASTContext *context,
+                             Expression *cond, CompoundStatement *thenStmt,
+                             IfStatement *elseStmt);
+
+  static IfStatement *create(SMRange range, ASTContext *context,
+                             Expression *cond, CompoundStatement *thenStmt);
 
   Expression *getCond() const { return cond; }
-  size_t getThenSize() const { return thenSize; }
-  ArrayRef<Statement *> getThenStmts() const {
-    return {getTrailingObjects<Statement *>(), thenSize};
+  CompoundStatement *getThenStmt() const { return thenStmt; }
+  bool hasElse() const { return elseStmt.has_value(); }
+  Statement *getElseStmt() const {
+    assert(hasElse());
+    return *elseStmt;
   }
-  ArrayRef<Statement *> getElseStmts() const {
-    if (elseSize)
-      return {getTrailingObjects<Statement *>() + thenSize, *elseSize};
-    return nullopt;
-  }
-  optional<size_t> getElseSize() const { return elseSize; }
-  bool hasElse() const { return elseSize.has_value(); }
 
 private:
   Expression *cond;
-  size_t thenSize;
-  optional<size_t> elseSize;
+  CompoundStatement *thenStmt;
+  optional<Statement *> elseStmt;
 };
 
 /// WhileStatement ::= 'while' Expression '{' Statement* '}'
-class WhileStatement final
-    : public ASTBase<WhileStatement, Statement>,
-      public TrailingObjects<WhileStatement, Statement *> {
-  WhileStatement(SMRange range, Expression *cond, size_t bodySize,
+class WhileStatement final : public ASTBase<WhileStatement, Statement> {
+  friend class ASTContext;
+  WhileStatement(SMRange range, Expression *cond, CompoundStatement *body,
                  bool isDoWhile)
-      : ASTBase(range, ASTKind::WhileStatement), cond(cond), bodySize(bodySize),
+      : ASTBase(range, ASTKind::WhileStatement), cond(cond), body(body),
         doWhile(isDoWhile) {}
 
 public:
   static WhileStatement *create(SMRange range, ASTContext *context,
-                                Expression *cond, ArrayRef<Statement *> body,
+                                Expression *cond, CompoundStatement *body,
                                 bool isDoWhile = false);
 
   Expression *getCond() const { return cond; }
-  size_t getBodySize() const { return bodySize; }
-  ArrayRef<Statement *> getBody() const {
-    return {getTrailingObjects<Statement *>(), bodySize};
-  }
-  auto begin() const { return getBody().begin(); }
-  auto end() const { return getBody().end(); }
+  CompoundStatement *getBody() const { return body; }
   bool isDoWhile() const { return doWhile; }
 
 private:
   Expression *cond;
-  size_t bodySize;
+  CompoundStatement *body;
   bool doWhile;
 };
 
@@ -295,28 +291,26 @@ private:
 class ForStatement final : public ASTBase<ForStatement, Statement>,
                            public TrailingObjects<ForStatement, Statement *> {
   ForStatement(SMRange range, bool hasDecl, optional<Expression *> cond,
-               bool hasStep, size_t bodySize)
+               bool hasStep)
       : ASTBase(range, ASTKind::ForStatement), hasDecl(hasDecl), cond(cond),
-        hasStep(hasStep), bodySize(bodySize) {}
+        hasStep(hasStep) {}
 
 public:
   static ForStatement *create(SMRange range, ASTContext *context,
                               optional<Statement *> decl,
                               optional<Expression *> cond,
                               optional<Statement *> step,
-                              ArrayRef<Statement *> body);
+                              CompoundStatement *body);
 
   optional<DeclarationStatement *> getDecl() const;
   optional<Expression *> getCond() const;
   optional<Statement *> getStep() const;
-  size_t getBodySize() const;
-  ArrayRef<Statement *> getBody() const;
+  CompoundStatement *getBody() const;
 
 private:
   bool hasDecl;
   optional<Expression *> cond;
   bool hasStep;
-  size_t bodySize;
 };
 
 /// BreakStatement ::= 'break' ';'
@@ -490,18 +484,13 @@ private:
 ///   '\' ParamList? '=>' (Expression | '{' Statement* '}')
 class LambdaExpression final
     : public ASTBase<LambdaExpression, Expression>,
-      public TrailingObjects<LambdaExpression, StringRef, AST *> {
+      public TrailingObjects<LambdaExpression, StringRef> {
   friend class ASTContext;
   friend class TrailingObjects;
 
-  LambdaExpression(SMRange range, size_t paramSize, bool isExpr,
-                   size_t bodySize)
+  LambdaExpression(SMRange range, size_t paramSize, AST *body)
       : ASTBase(range, ASTKind::LambdaExpression), paramSize(paramSize),
-        isExpr(isExpr), bodySize(bodySize) {}
-
-  size_t numTrailingObjects(OverloadToken<StringRef>) const {
-    return paramSize;
-  }
+        body(body) {}
 
 public:
   static LambdaExpression *create(SMRange range, ASTContext *context,
@@ -509,21 +498,19 @@ public:
 
   static LambdaExpression *create(SMRange range, ASTContext *context,
                                   ArrayRef<StringRef> params,
-                                  ArrayRef<Statement *> body);
+                                  CompoundStatement *body);
 
   size_t getParamSize() const { return paramSize; }
-  bool isExprBody() const { return isExpr; }
-  Expression *getExpr() const;
+  bool isExprBody() const { return body->isa<Expression>(); }
   ArrayRef<StringRef> getParams() const {
     return {getTrailingObjects<StringRef>(), paramSize};
   }
-  ArrayRef<Statement *> getStmtBody() const;
-  size_t getBodySize() const { return bodySize; }
+  Expression *getExprBody() const;
+  CompoundStatement *getStmtBody() const;
 
 private:
   size_t paramSize;
-  bool isExpr;
-  size_t bodySize;
+  AST *body;
 };
 
 /// BinaryExpression ::= Expression BinaryOperator Expression

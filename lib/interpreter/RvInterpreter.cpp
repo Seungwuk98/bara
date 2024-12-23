@@ -9,14 +9,6 @@
 
 namespace bara {
 
-template <typename L, typename R>
-optional<pair<const L *, const R *>> matchPair(const Value *l, const Value *r) {
-  if (auto *l1 = l->dyn_cast<L>())
-    if (auto *r1 = r->dyn_cast<R>())
-      return std::make_pair(l1, r1);
-  return nullopt;
-}
-
 namespace BinaryOp {
 extern unique_ptr<Value> add(const Value *l, const Value *r);
 extern unique_ptr<Value> sub(const Value *l, const Value *r);
@@ -188,7 +180,7 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
       return;
     }
 
-    if (*lhsBoolOpt) {
+    if (!*lhsBoolOpt) {
       result = BoolValue::create(false);
       return;
     }
@@ -223,7 +215,7 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
       return;
     }
 
-    if (!*lhsBoolOpt) {
+    if (*lhsBoolOpt) {
       result = BoolValue::create(true);
       return;
     }
@@ -501,14 +493,10 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
         Environment::Scope bodyScope(getEnv());
 
         if (lambdaDecl->isExprBody()) {
-          auto *body = lambdaDecl->getExpr();
-          body->accept(*this);
+          errs() << lambdaDecl->getExprBody()->toString() << '\n';
+          lambdaDecl->getExprBody()->accept(*this);
         } else {
-          for (auto *body : lambdaDecl->getStmtBody()) {
-            body->accept(*stmtInterpreter);
-            if (stmtInterpreter->isTerminated())
-              break;
-          }
+          lambdaDecl->getStmtBody()->accept(*stmtInterpreter);
 
           if (stmtInterpreter->continueFlag) {
             stmtInterpreter->report(

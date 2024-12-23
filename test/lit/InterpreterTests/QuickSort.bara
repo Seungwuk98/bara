@@ -1,0 +1,36 @@
+// RUN: bara %s -interpret | FileCheck %s
+
+/// QuickSort implementation in bara
+/// This implementation is very simple but not efficient, 
+/// because it creates too much new arrays.
+fn quickSort(list) {
+  if len(list) == 1 {
+    return [list[0]];
+  } else {
+    if len(list) == 0 {
+      return [];
+    }
+  } 
+  var pivot = list[0];
+  var (left, right) = ([], []);
+
+  for (var i = 1; i < len(list); i += 1) {
+    if list[i] < pivot {
+      push(left, list[i]);
+    } else {
+      push(right, list[i]);
+    }
+  }
+
+  return quickSort(left) + [pivot] + quickSort(right);
+}
+
+
+print(quickSort([12, 11, 13, 5, 6, 7]));
+// CHECK: [5, 6, 7, 11, 12, 13]
+
+print(quickSort([12, 11, 13, 5, 6, 7, 1, 2, 3, 4, 8, 9, 10]));
+// CHECK: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+
+print(quickSort([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
+// CHECK: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

@@ -9,6 +9,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <iostream>
+#include <random>
 
 namespace bara {
 
@@ -349,6 +350,48 @@ DECL(split) {
         return StringValue::create(element);
       });
   return ListValue::create(context, newValues);
+}
+
+static std::random_device rd;
+static std::mt19937 gen(rd());
+static std::uniform_int_distribution<int64_t>
+    dis(std::numeric_limits<int64_t>::min(),
+        std::numeric_limits<int64_t>::max());
+
+DECL(random) {
+  if (args.size() != 0 && args.size() != 2) {
+    report(range, diag, error_invalid_argument_size, "random", 0, args.size());
+    return nullptr;
+  }
+
+  auto randValue = dis(gen);
+  if (args.size() == 2) {
+    auto start = args[0].get();
+    if (!start->isa<IntegerValue>()) {
+      report(range, diag, error_unexpected_type, "int", start->toString());
+      return nullptr;
+    }
+    auto end = args[1].get();
+    if (!end->isa<IntegerValue>()) {
+      report(range, diag, error_unexpected_type, "int", end->toString());
+      return nullptr;
+    }
+
+    auto startValue = start->cast<IntegerValue>()->getValue();
+    auto endValue = end->cast<IntegerValue>()->getValue();
+
+    if (startValue >= endValue) {
+      report(range, diag, error_invalid_random_range, startValue, endValue);
+      return nullptr;
+    }
+
+    randValue = randValue % (endValue - startValue);
+    if (randValue < 0)
+      randValue = -randValue;
+    randValue += startValue;
+  }
+
+  return IntegerValue::create(randValue);
 }
 
 #undef DECL

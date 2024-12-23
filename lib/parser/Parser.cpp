@@ -99,33 +99,28 @@ IfStatement *Parser::parseIfStatement() {
   if (diag.hasError())
     return nullptr;
 
-  if (consume<Token::Tok_LBrace>())
-    return nullptr;
-
-  auto thenStmts = parseStatements();
+  auto thenStmt = parseCompoundStatement();
   if (diag.hasError())
-    return nullptr;
-
-  if (consume<Token::Tok_RBrace>())
     return nullptr;
 
   if (peekIs<Token::Tok_else>()) {
     skip();
-    if (consume<Token::Tok_LBrace>())
-      return nullptr;
-
-    auto elseStmts = parseStatements();
-    if (diag.hasError())
-      return nullptr;
-
-    if (consume<Token::Tok_RBrace>())
-      return nullptr;
-
-    return IfStatement::create(capture.create(), context, expr, thenStmts,
-                               elseStmts);
+    if (peekIs<Token::Tok_LBrace>()) {
+      auto compoundStmt = parseCompoundStatement();
+      if (diag.hasError())
+        return nullptr;
+      return IfStatement::create(capture.create(), context, expr, thenStmt,
+                                 compoundStmt);
+    } else {
+      auto elseStmt = parseIfStatement();
+      if (diag.hasError())
+        return nullptr;
+      return IfStatement::create(capture.create(), context, expr, thenStmt,
+                                 elseStmt);
+    }
   }
 
-  return IfStatement::create(capture.create(), context, expr, thenStmts);
+  return IfStatement::create(capture.create(), context, expr, thenStmt);
 }
 
 WhileStatement *Parser::parseWhileStatement() {
@@ -137,17 +132,11 @@ WhileStatement *Parser::parseWhileStatement() {
   if (diag.hasError())
     return nullptr;
 
-  if (consume<Token::Tok_LBrace>())
-    return nullptr;
-
-  auto stmts = parseStatements();
+  auto stmt = parseCompoundStatement();
   if (diag.hasError())
     return nullptr;
 
-  if (consume<Token::Tok_RBrace>())
-    return nullptr;
-
-  return WhileStatement::create(capture.create(), context, expr, stmts);
+  return WhileStatement::create(capture.create(), context, expr, stmt);
 }
 
 WhileStatement *Parser::parseDoWhileStatement() {
@@ -155,14 +144,8 @@ WhileStatement *Parser::parseDoWhileStatement() {
   if (consume<Token::Tok_do>())
     return nullptr;
 
-  if (consume<Token::Tok_LBrace>())
-    return nullptr;
-
-  auto stmts = parseStatements();
+  auto stmt = parseCompoundStatement();
   if (diag.hasError())
-    return nullptr;
-
-  if (consume<Token::Tok_RBrace>())
     return nullptr;
 
   if (consume<Token::Tok_while>())
@@ -175,7 +158,7 @@ WhileStatement *Parser::parseDoWhileStatement() {
   if (consume<Token::Tok_Semicolon>())
     return nullptr;
 
-  return WhileStatement::create(capture.create(), context, expr, stmts, true);
+  return WhileStatement::create(capture.create(), context, expr, stmt, true);
 }
 
 ForStatement *Parser::parseForStatement() {
@@ -260,18 +243,12 @@ ForStatement *Parser::parseForStatement() {
   if (consume<Token::Tok_RParen>())
     return nullptr;
 
-  if (consume<Token::Tok_LBrace>())
-    return nullptr;
-
-  auto stmts = parseStatements();
+  auto stmt = parseCompoundStatement();
   if (diag.hasError())
     return nullptr;
 
-  if (consume<Token::Tok_RBrace>())
-    return nullptr;
-
   return ForStatement::create(capture.create(), context, decl, cond, step,
-                              stmts);
+                              stmt);
 }
 
 ReturnStatement *Parser::parseReturnStatement() {
@@ -845,13 +822,10 @@ LambdaExpression *Parser::parseLambdaExpression() {
     return nullptr;
 
   if (peekIs<Token::Tok_LBrace>()) {
-    skip();
-    auto stmts = parseStatements();
+    auto stmt = parseCompoundStatement();
     if (diag.hasError())
       return nullptr;
-    if (consume<Token::Tok_RBrace>())
-      return nullptr;
-    return LambdaExpression::create(capture.create(), context, params, stmts);
+    return LambdaExpression::create(capture.create(), context, params, stmt);
   }
   auto *expr = parseExpression();
   if (diag.hasError())

@@ -10,5 +10,7 @@ DIAG(error_unexpected_type, "Unexpected type. expected({1}), got({2})", Error)
 DIAG(error_empty_list, "Attempted 'pop' to empty list", Error)
 DIAG(error_cast, "Cast error value({0}) to '{1}'", Error)
 DIAG(error_input, "Failed to get input from stdin", Error)
+DIAG(error_invalid_random_range,
+     "Randome range is invalid. start({0}) should be less than end({1})", Error)
 
 #undef DIAG

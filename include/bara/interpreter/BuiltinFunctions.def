@@ -55,5 +55,9 @@ BUILTIN_FUNC(split, "split", R"(<split>
 usage: split(string, separator)
 split string with separator
 )")
+BUILTIN_FUNC(random, "random", R"(<random>
+usage: random() | random(start: int, end: int)
+get random number in int64 or given range[start, end) 
+)")
 
 #undef BUILTIN_FUNC

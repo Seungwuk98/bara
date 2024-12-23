@@ -1,0 +1,57 @@
+// RUN: bara %s -interpret | FileCheck %s
+
+fn merge(list, start, mid, end) {
+  var tmp = [];
+  var i = start;
+  var j = mid + 1;
+  while i <= mid && j <= end {
+    if list[i] < list[j] {
+      push(tmp, list[i]);
+      i += 1;
+    } else {
+      push(tmp, list[j]);
+      j += 1;
+    }
+  }
+
+  while i <= mid {
+    push(tmp, list[i]);
+    i += 1;
+  }
+
+  while j <= end {
+    push(tmp, list[j]);
+    j += 1;
+  }
+
+
+  for (var i = 0; i < len(tmp); i += 1) {
+    list[start + i] = tmp[i];
+  }
+}
+
+fn mergeSortImpl(list, start, end) {
+  if (start < end) {
+    var mid = (start + end) / 2;
+    mergeSortImpl(list, start, mid);
+    mergeSortImpl(list, mid + 1, end);
+    merge(list, start, mid, end);
+  }
+}
+
+fn mergeSort(list) {
+  mergeSortImpl(list, 0, len(list) - 1);
+  return list;
+}
+
+var list = [12, 11, 13, 5, 6, 7];
+mergeSort(list);
+print(list);
+// CHECK: [5, 6, 7, 11, 12, 13]
+
+var list2 = [12, 11, 13, 5, 6, 7, 1, 2, 3, 4, 8, 9, 10];
+mergeSort(list2);
+print(list2);
+// CHECK: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+
+
