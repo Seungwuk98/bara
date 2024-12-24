@@ -37,4 +37,6 @@ DIAG(error_unmatched_pattern, "Unmatched pattern error. got ({0})", Error)
 DIAG(warning_integer_overflow, "Integer literal is overflowed", Warning)
 
 DIAG(note_function, "The function is declared here", Note)
+DIAG(note_dump_function_call_stack, "function '{0}' is called here", Note)
+DIAG(note_dump_lambda_call_stack, "lambda is called here", Note)
 #undef DIAG

@@ -447,8 +447,12 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
           if (stmtInterpreter->isTerminated())
             break;
         }
-
-        if (stmtInterpreter->continueFlag) {
+        if (diag.hasError()) {
+          stmtInterpreter->report(
+              funcDecl->getRange(),
+              InterpretDiagnostic::note_dump_function_call_stack,
+              funcDecl->getName());
+        } else if (stmtInterpreter->continueFlag) {
           stmtInterpreter->report(
               stmtInterpreter->continueFlag->getRange(),
               InterpretDiagnostic::error_unresolved_continue_statement);
@@ -493,12 +497,14 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
         Environment::Scope bodyScope(getEnv());
 
         if (lambdaDecl->isExprBody()) {
-          errs() << lambdaDecl->getExprBody()->toString() << '\n';
           lambdaDecl->getExprBody()->accept(*this);
         } else {
           lambdaDecl->getStmtBody()->accept(*stmtInterpreter);
-
-          if (stmtInterpreter->continueFlag) {
+          if (diag.hasError()) {
+            stmtInterpreter->report(
+                lambdaDecl->getRange(),
+                InterpretDiagnostic::note_dump_lambda_call_stack);
+          } else if (stmtInterpreter->continueFlag) {
             stmtInterpreter->report(
                 stmtInterpreter->continueFlag->getRange(),
                 InterpretDiagnostic::error_unresolved_continue_statement);
