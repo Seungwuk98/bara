@@ -19,8 +19,8 @@ function(add_algorithm algorithm)
              --bara-interpreter=$<TARGET_FILE:bara> 
              --bara-file=${ALG_BARA} 
              --checker-file=$<TARGET_FILE:${ALG_CHECKER}>
-    DEPENDS ${ALG_ANSWER} ${ALG_CHECKER}
-    BYPRODUCTS ${case_output_dir}/output/
+    DEPENDS ${ALG_ANSWER} ${ALG_CHECKER} ${case_output_dir}/output/
+    COMMENT "Running test:${test_name}"
   )
 endfunction()
 

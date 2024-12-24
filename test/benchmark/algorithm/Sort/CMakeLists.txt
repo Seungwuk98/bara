@@ -49,13 +49,12 @@ add_algorithm(
   ANSWER "test-sort_answer"
   BARA "${CMAKE_CURRENT_SOURCE_DIR}/MergeSort.bara"
 )
-#
-# add_algorithm(
-#   "Sort"
-#   "big"
-#   GENERATOR "gen" "gen_sort"
-#   ANSWER "sol.cpp"
-#   CHECKER "checker.cpp"
-#   CASE "big"
-#   BARA "MergeSort.bara"
-# )
+
+add_algorithm(
+  "sort"
+  TEST_CASE "big"
+  CHECKER "test-sort_checker"
+  ANSWER "test-sort_answer"
+  BARA "${CMAKE_CURRENT_SOURCE_DIR}/MergeSort.bara"
+)
+
