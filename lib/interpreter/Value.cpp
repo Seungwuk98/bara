@@ -42,10 +42,10 @@ public:
 #define VALUE(Name) void visit(const Name##Value &value);
 #include "bara/interpreter/Value.def"
 
-  std::unique_ptr<Value> getResult() { return std::move(result); }
+  UniqueValue<Value> getResult() { return std::move(result); }
 
 private:
-  std::unique_ptr<Value> result;
+  UniqueValue<Value> result;
 };
 
 llvm::ManagedStatic<CloneVisitor> cloneVisitor;
@@ -65,6 +65,7 @@ private:
 };
 
 void Value::accept(ConstValueVisitor &visitor) const { visitor.visit(*this); }
+void Value::accept(ValueVisitor &visitor) { visitor.visit(*this); }
 
 string Value::toString() const {
   string str;
@@ -75,7 +76,7 @@ string Value::toString() const {
   return os.str();
 }
 
-unique_ptr<Value> Value::clone() const {
+UniqueValue<Value> Value::clone() const {
   cloneVisitor->init();
   accept(*cloneVisitor);
   return cloneVisitor->getResult();
@@ -97,9 +98,9 @@ bool Value::isEqual(const Value *other) const {
 /// IntegerValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<IntegerValue> IntegerValue::create(int64_t value) {
-  auto *mem = new IntegerValue(value);
-  return unique_ptr<IntegerValue>(mem);
+UniqueValue<IntegerValue> IntegerValue::create(int64_t value) {
+  auto *mem = new (malloc(sizeof(IntegerValue))) IntegerValue(value);
+  return UniqueValue<IntegerValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const IntegerValue &value) {
@@ -125,9 +126,9 @@ void ValueEqVisitor::visit(const IntegerValue &l) {
 /// BoolValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<BoolValue> BoolValue::create(bool value) {
-  auto *mem = new BoolValue(value);
-  return unique_ptr<BoolValue>(mem);
+UniqueValue<BoolValue> BoolValue::create(bool value) {
+  auto *mem = new (malloc(sizeof(BoolValue))) BoolValue(value);
+  return UniqueValue<BoolValue>(mem);
 }
 
 void ToBoolVisitor::visit(const BoolValue &value) { result = value.getValue(); }
@@ -151,14 +152,14 @@ void ValueEqVisitor::visit(const BoolValue &l) {
 /// FloatValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<FloatValue> FloatValue::create(StringRef value) {
-  auto *mem = new FloatValue(value);
-  return unique_ptr<FloatValue>(mem);
+UniqueValue<FloatValue> FloatValue::create(StringRef value) {
+  auto *mem = new (malloc(sizeof(FloatValue))) FloatValue(value);
+  return UniqueValue<FloatValue>(mem);
 }
 
-unique_ptr<FloatValue> FloatValue::create(const APFloat &value) {
-  auto *mem = new FloatValue(value);
-  return unique_ptr<FloatValue>(mem);
+UniqueValue<FloatValue> FloatValue::create(const APFloat &value) {
+  auto *mem = new (malloc(sizeof(FloatValue))) FloatValue(value);
+  return UniqueValue<FloatValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const FloatValue &value) {
@@ -188,9 +189,12 @@ void ValueEqVisitor::visit(const FloatValue &l) {
 /// StringValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<StringValue> StringValue::create(StringRef value) {
-  auto *mem = new StringValue(value);
-  return unique_ptr<StringValue>(mem);
+UniqueValue<StringValue> StringValue::create(StringRef value) {
+  auto sizeToAlloc = totalSizeToAlloc<char>(value.size());
+  auto *stringValue = new (malloc(sizeToAlloc)) StringValue(value.size());
+  std::uninitialized_copy(value.begin(), value.end(),
+                          stringValue->getTrailingObjects<char>());
+  return UniqueValue<StringValue>(stringValue);
 }
 
 void ValuePrintVisitor::visit(const StringValue &value) {
@@ -216,22 +220,23 @@ void ValueEqVisitor::visit(const StringValue &l) {
 /// ListValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<ListValue>
+UniqueValue<ListValue>
 ListValue::create(MemoryContext *context,
-                  MutableArrayRef<unique_ptr<Value>> value) {
+                  MutableArrayRef<UniqueValue<Value>> value) {
   auto valueMemorys =
-      llvm::map_to_vector(value, [context](unique_ptr<Value> &value) {
+      llvm::map_to_vector(value, [context](UniqueValue<Value> &value) {
         return ValueMemory::create(context, std::move(value));
       });
 
   auto *vectorMemory = VectorMemory::create(context, valueMemorys);
 
-  return unique_ptr<ListValue>(new ListValue(vectorMemory));
+  return UniqueValue<ListValue>(new (malloc(sizeof(ListValue)))
+                                    ListValue(vectorMemory));
 }
 
-unique_ptr<ListValue> ListValue::create(VectorMemory *memory) {
-  auto *mem = new ListValue(memory);
-  return unique_ptr<ListValue>(mem);
+UniqueValue<ListValue> ListValue::create(VectorMemory *memory) {
+  auto *mem = new (malloc(sizeof(ListValue))) ListValue(memory);
+  return UniqueValue<ListValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const ListValue &value) {
@@ -262,9 +267,14 @@ void ValueEqVisitor::visit(const ListValue &l) {
 /// TupleValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<TupleValue> TupleValue::create(SmallVector<unique_ptr<Value>> mems) {
-  auto *mem = new TupleValue(std::move(mems));
-  return unique_ptr<TupleValue>(mem);
+UniqueValue<TupleValue>
+TupleValue::create(SmallVector<UniqueValue<Value>> mems) {
+  auto sizeToAlloc = totalSizeToAlloc<UniqueValue<Value>>(mems.size());
+  auto *mem = new (malloc(sizeToAlloc)) TupleValue(mems.size());
+  std::uninitialized_move(mems.begin(), mems.end(),
+                          mem->getTrailingObjects<UniqueValue<Value>>());
+
+  return UniqueValue<TupleValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const TupleValue &value) {
@@ -309,9 +319,9 @@ void ValueEqVisitor::visit(const TupleValue &l) {
 /// NilValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<NilValue> NilValue::create() {
-  auto *mem = new NilValue();
-  return unique_ptr<NilValue>(mem);
+UniqueValue<NilValue> NilValue::create() {
+  auto *mem = new (malloc(sizeof(NilValue))) NilValue();
+  return UniqueValue<NilValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const NilValue &value) { printer << "nil"; }
@@ -326,10 +336,10 @@ void ValueEqVisitor::visit(const NilValue &l) { result = r->isa<NilValue>(); }
 /// FunctionValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<FunctionValue>
+UniqueValue<FunctionValue>
 FunctionValue::create(const Environment &env, const FunctionDeclaration *decl) {
-  auto *mem = new FunctionValue(env, decl);
-  return unique_ptr<FunctionValue>(mem);
+  auto *mem = new (malloc(sizeof(FunctionValue))) FunctionValue(env, decl);
+  return UniqueValue<FunctionValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const FunctionValue &value) {
@@ -359,10 +369,10 @@ void ValueEqVisitor::visit(const FunctionValue &l) {
 /// LambdaValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<LambdaValue> LambdaValue::create(const Environment &env,
-                                            const LambdaExpression *decl) {
-  auto *mem = new LambdaValue(env, decl);
-  return unique_ptr<LambdaValue>(mem);
+UniqueValue<LambdaValue> LambdaValue::create(const Environment &env,
+                                             const LambdaExpression *decl) {
+  auto *mem = new (malloc(sizeof(LambdaValue))) LambdaValue(env, decl);
+  return UniqueValue<LambdaValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const LambdaValue &value) {
@@ -391,11 +401,12 @@ void ValueEqVisitor::visit(const LambdaValue &l) {
 /// BuiltinFunctionValue
 //===----------------------------------------------------------------------===//
 
-unique_ptr<BuiltinFunctionValue> BuiltinFunctionValue::create(StringRef name,
-                                                              StringRef helpMsg,
-                                                              funcBodyType fn) {
-  auto *mem = new BuiltinFunctionValue(name, helpMsg, fn);
-  return unique_ptr<BuiltinFunctionValue>(mem);
+UniqueValue<BuiltinFunctionValue>
+BuiltinFunctionValue::create(StringRef name, StringRef helpMsg,
+                             funcBodyType fn) {
+  auto *mem = new (malloc(sizeof(BuiltinFunctionValue)))
+      BuiltinFunctionValue(name, helpMsg, fn);
+  return UniqueValue<BuiltinFunctionValue>(mem);
 }
 
 void ValuePrintVisitor::visit(const BuiltinFunctionValue &value) {

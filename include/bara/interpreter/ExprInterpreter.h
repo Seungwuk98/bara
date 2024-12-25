@@ -22,7 +22,7 @@ public:
         stmtInterpreter(stmtInterpreter) {}
 
   Memory *interpretIdentifier(const IdentifierExpression *expr);
-  std::variant<std::monostate, Memory *, unique_ptr<Value>, char>
+  std::variant<std::monostate, Memory *, UniqueValue<Value>, char>
   interpretIndex(const IndexExpression *expr);
 
   Environment &getEnv() { return stmtInterpreter->env; }
@@ -46,15 +46,15 @@ public:
 #define EXPRESSION(Name) void visit(const Name &expr);
 #include "bara/ast/Expression.def"
 
-  unique_ptr<Value> getResult() { return std::move(result); }
+  UniqueValue<Value> getResult() { return std::move(result); }
 
-  unique_ptr<Value> binaryOp(SMRange range, const Value *l, const Value *r,
-                             Operator op);
+  UniqueValue<Value> binaryOp(SMRange range, const Value *l, const Value *r,
+                              Operator op);
 
 private:
   friend class StmtInterpreter;
 
-  unique_ptr<Value> result = nullptr;
+  UniqueValue<Value> result = nullptr;
 };
 
 string evalStringLiteral(StringRef buffer);
@@ -93,11 +93,11 @@ Memory *CommonExprInterpreter<ConcreteType>::interpretIdentifier(
 }
 
 template <typename ConcreteType>
-std::variant<std::monostate, Memory *, unique_ptr<Value>, char>
+std::variant<std::monostate, Memory *, UniqueValue<Value>, char>
 CommonExprInterpreter<ConcreteType>::interpretIndex(
     const IndexExpression *expr) {
   using IndexReturnTy =
-      std::variant<std::monostate, Memory *, unique_ptr<Value>, char>;
+      std::variant<std::monostate, Memory *, UniqueValue<Value>, char>;
   auto value = stmtInterpreter->rvInterpret(*expr->getLhs());
   if (diag.hasError())
     return {};

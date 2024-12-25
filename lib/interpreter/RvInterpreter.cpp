@@ -10,29 +10,29 @@
 namespace bara {
 
 namespace BinaryOp {
-extern unique_ptr<Value> add(const Value *l, const Value *r);
-extern unique_ptr<Value> sub(const Value *l, const Value *r);
-extern unique_ptr<Value> mul(const Value *l, const Value *r);
-extern unique_ptr<Value> div(const Value *l, const Value *r);
-extern unique_ptr<Value> mod(const Value *l, const Value *r);
-extern unique_ptr<Value> eq(const Value *l, const Value *r);
-extern unique_ptr<Value> ne(const Value *l, const Value *r);
-extern unique_ptr<Value> lt(const Value *l, const Value *r);
-extern unique_ptr<Value> le(const Value *l, const Value *r);
-extern unique_ptr<Value> gt(const Value *l, const Value *r);
-extern unique_ptr<Value> ge(const Value *l, const Value *r);
-extern unique_ptr<Value> logicalAnd(const Value *l, const Value *r);
-extern unique_ptr<Value> logicalOr(const Value *l, const Value *r);
-extern unique_ptr<Value> bitAnd(const Value *l, const Value *r);
-extern unique_ptr<Value> bitOr(const Value *l, const Value *r);
-extern unique_ptr<Value> bitXor(const Value *l, const Value *r);
-extern unique_ptr<Value> shl(const Value *l, const Value *r);
-extern unique_ptr<Value> shr(const Value *l, const Value *r);
+extern UniqueValue<Value> add(const Value *l, const Value *r);
+extern UniqueValue<Value> sub(const Value *l, const Value *r);
+extern UniqueValue<Value> mul(const Value *l, const Value *r);
+extern UniqueValue<Value> div(const Value *l, const Value *r);
+extern UniqueValue<Value> mod(const Value *l, const Value *r);
+extern UniqueValue<Value> eq(const Value *l, const Value *r);
+extern UniqueValue<Value> ne(const Value *l, const Value *r);
+extern UniqueValue<Value> lt(const Value *l, const Value *r);
+extern UniqueValue<Value> le(const Value *l, const Value *r);
+extern UniqueValue<Value> gt(const Value *l, const Value *r);
+extern UniqueValue<Value> ge(const Value *l, const Value *r);
+extern UniqueValue<Value> logicalAnd(const Value *l, const Value *r);
+extern UniqueValue<Value> logicalOr(const Value *l, const Value *r);
+extern UniqueValue<Value> bitAnd(const Value *l, const Value *r);
+extern UniqueValue<Value> bitOr(const Value *l, const Value *r);
+extern UniqueValue<Value> bitXor(const Value *l, const Value *r);
+extern UniqueValue<Value> shl(const Value *l, const Value *r);
+extern UniqueValue<Value> shr(const Value *l, const Value *r);
 
 } // namespace BinaryOp
 
-unique_ptr<Value> RvExprInterpreter::binaryOp(SMRange range, const Value *l,
-                                              const Value *r, Operator op) {
+UniqueValue<Value> RvExprInterpreter::binaryOp(SMRange range, const Value *l,
+                                               const Value *r, Operator op) {
   switch (op) {
 #define BINARY_OP(op, func)                                                    \
   case Operator::op: {                                                         \
@@ -131,8 +131,8 @@ void RvExprInterpreter::visit(const IndexExpression &expr) {
     return;
   }
 
-  if (std::holds_alternative<unique_ptr<Value>>(memoryOrValue)) {
-    result = std::move(std::get<unique_ptr<Value>>(memoryOrValue));
+  if (std::holds_alternative<UniqueValue<Value>>(memoryOrValue)) {
+    result = std::move(std::get<UniqueValue<Value>>(memoryOrValue));
     return;
   }
 
@@ -397,7 +397,7 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
     return;
   }
 
-  SmallVector<unique_ptr<Value>> args;
+  SmallVector<UniqueValue<Value>> args;
   args.reserve(expr.getArgs().size());
   for (auto *argExpr : expr.getArgs()) {
     argExpr->accept(*this);
@@ -546,7 +546,7 @@ void RvExprInterpreter::visit(const ArrayExpression &expr) {
 }
 
 void RvExprInterpreter::visit(const TupleExpression &expr) {
-  SmallVector<unique_ptr<Value>> values;
+  SmallVector<UniqueValue<Value>> values;
   values.reserve(expr.getSize());
 
   for (auto *elementExpr : expr.getExprs()) {

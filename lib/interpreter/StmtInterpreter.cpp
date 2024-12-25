@@ -28,7 +28,7 @@ Memory *StmtInterpreter::lvInterpret(const Expression &ast) {
   return lvInterpreter->getResult();
 }
 
-unique_ptr<Value> StmtInterpreter::rvInterpret(const Expression &ast) {
+UniqueValue<Value> StmtInterpreter::rvInterpret(const Expression &ast) {
   ast.accept(*rvInterpreter);
   return rvInterpreter->getResult();
 }

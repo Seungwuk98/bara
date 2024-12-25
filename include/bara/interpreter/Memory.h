@@ -2,15 +2,13 @@
 #define BARA_MEMORY_H
 
 #include "bara/context/MemoryContext.h"
+#include "bara/interpreter/ValueDeleter.h"
 #include "bara/utils/LLVM.h"
 #include "bara/utils/VisitorBase.h"
-#include <memory>
 
 namespace bara {
 class Value;
 class Memory;
-
-using std::unique_ptr;
 
 enum class MemoryKind {
 #define MEMORY(Name) Name,
@@ -85,7 +83,7 @@ private:
 };
 
 class ImmutableMemory final : public Memory {
-  ImmutableMemory(MemoryContext *context, unique_ptr<Value> value)
+  ImmutableMemory(MemoryContext *context, UniqueValue<Value> value)
       : Memory(context, MemoryKind::Immutable), value(std::move(value)) {}
 
 public:
@@ -97,14 +95,14 @@ public:
   Value *view() const { return value.get(); }
 
   static ImmutableMemory *create(MemoryContext *context,
-                                 unique_ptr<Value> value);
+                                 UniqueValue<Value> value);
 
 private:
-  unique_ptr<Value> value;
+  UniqueValue<Value> value;
 };
 
 class ValueMemory final : public Memory {
-  ValueMemory(MemoryContext *context, unique_ptr<Value> value)
+  ValueMemory(MemoryContext *context, UniqueValue<Value> value)
       : Memory(context, MemoryKind::Value), value(std::move(value)) {}
 
 public:
@@ -115,12 +113,12 @@ public:
   }
 
   Value *view() const { return value.get(); }
-  void assign(unique_ptr<Value> value) { this->value = std::move(value); }
+  void assign(UniqueValue<Value> value) { this->value = std::move(value); }
 
-  static ValueMemory *create(MemoryContext *context, unique_ptr<Value> value);
+  static ValueMemory *create(MemoryContext *context, UniqueValue<Value> value);
 
 private:
-  unique_ptr<Value> value;
+  UniqueValue<Value> value;
 };
 
 class TupleMemory final : public Memory,

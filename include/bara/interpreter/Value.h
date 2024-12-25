@@ -5,8 +5,10 @@
 #include "bara/diagnostic/Diagnostic.h"
 #include "bara/interpreter/Environment.h"
 #include "bara/interpreter/Memory.h"
+#include "bara/interpreter/ValueDeleter.h"
 #include "bara/utils/VisitorBase.h"
 #include "llvm/ADT/APFloat.h"
+#include <llvm-18/llvm/Support/TrailingObjects.h>
 
 namespace bara {
 
@@ -41,11 +43,16 @@ using ConstValueVisitorBase =
 #define VALUE(Name) , Name##Value
 #include "bara/interpreter/Value.def"
                        >;
+using ValueVisitor = utils::Visitor<Value, false>;
+template <typename ConcreteType>
+using ValueVisitorBase =
+    utils::VisitorBase<ConcreteType, Value, false, _inner::ValueKindMapper
+#define VALUE(Name) , Name##Value
+#include "bara/interpreter/Value.def"
+                       >;
 
 class Value {
 public:
-  virtual ~Value() = default;
-
   using KindTy = ValueKind;
 
   template <typename... U>
@@ -72,11 +79,12 @@ public:
   ValueKind getKind() const { return kind; }
 
   string toString() const;
-  unique_ptr<Value> clone() const;
+  UniqueValue<Value> clone() const;
   optional<bool> toBool() const;
   bool isEqual(const Value *value) const;
 
   void accept(ConstValueVisitor &visitor) const;
+  void accept(ValueVisitor &visitor);
 
 protected:
   Value(ValueKind kind) : kind(kind) {}
@@ -93,7 +101,7 @@ public:
     return value->getKind() == ValueKind::Integer;
   }
 
-  static unique_ptr<IntegerValue> create(int64_t value);
+  static UniqueValue<IntegerValue> create(int64_t value);
   int64_t getValue() const { return value; }
 
 private:
@@ -108,7 +116,7 @@ public:
     return value->getKind() == ValueKind::Bool;
   }
 
-  static unique_ptr<BoolValue> create(bool value);
+  static UniqueValue<BoolValue> create(bool value);
   bool getValue() const { return value; }
 
 private:
@@ -125,27 +133,29 @@ public:
     return value->getKind() == ValueKind::Float;
   }
 
-  static unique_ptr<FloatValue> create(StringRef value);
-  static unique_ptr<FloatValue> create(const APFloat &value);
+  static UniqueValue<FloatValue> create(StringRef value);
+  static UniqueValue<FloatValue> create(const APFloat &value);
   const APFloat &getValue() const { return value; }
 
 private:
   APFloat value;
 };
 
-class StringValue final : public Value {
-  StringValue(StringRef value) : Value(ValueKind::String), value(value) {}
+class StringValue final : public Value,
+                          public TrailingObjects<StringValue, char> {
+  StringValue(size_t length) : Value(ValueKind::String), length(length) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::String;
   }
 
-  static unique_ptr<StringValue> create(StringRef value);
-  StringRef getValue() const { return value; }
+  static UniqueValue<StringValue> create(StringRef value);
+  StringRef getValue() const { return {getTrailingObjects<char>(), length}; }
+  size_t size() const { return length; }
 
 private:
-  string value;
+  size_t length;
 };
 
 class ListValue final : public Value {
@@ -156,10 +166,10 @@ public:
     return value->getKind() == ValueKind::List;
   }
 
-  static unique_ptr<ListValue>
-  create(MemoryContext *context, MutableArrayRef<unique_ptr<Value>> values);
+  static UniqueValue<ListValue>
+  create(MemoryContext *context, MutableArrayRef<UniqueValue<Value>> values);
 
-  static unique_ptr<ListValue> create(VectorMemory *memory);
+  static UniqueValue<ListValue> create(VectorMemory *memory);
 
   VectorMemory *getVectorMemory() const { return memory; }
   ValueMemory *getElement(size_t index) const { return memory->get(index); }
@@ -170,24 +180,28 @@ private:
   VectorMemory *memory;
 };
 
-class TupleValue final : public Value {
-  TupleValue(SmallVector<unique_ptr<Value>> mems)
-      : Value(ValueKind::Tuple), mems(std::move(mems)) {}
+class TupleValue final
+    : public Value,
+      public TrailingObjects<TupleValue, UniqueValue<Value>> {
+  friend class ValueEraser;
+  TupleValue(size_t length) : Value(ValueKind::Tuple), length(length) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Tuple;
   }
 
-  static unique_ptr<TupleValue> create(SmallVector<unique_ptr<Value>> mems);
+  static UniqueValue<TupleValue> create(SmallVector<UniqueValue<Value>> mems);
 
-  ArrayRef<unique_ptr<Value>> getValues() const { return mems; }
-  Value *getElement(size_t index) const { return mems[index].get(); }
-  size_t size() const { return mems.size(); }
-  bool empty() const { return mems.empty(); }
+  ArrayRef<UniqueValue<Value>> getValues() const {
+    return {getTrailingObjects<UniqueValue<Value>>(), length};
+  }
+  Value *getElement(size_t index) const { return getValues()[index].get(); }
+  size_t size() const { return length; }
+  bool empty() const { return length == 0; }
 
 private:
-  const SmallVector<unique_ptr<Value>> mems;
+  size_t length;
 };
 
 class NilValue final : public Value {
@@ -198,10 +212,11 @@ public:
     return value->getKind() == ValueKind::Nil;
   }
 
-  static unique_ptr<NilValue> create();
+  static UniqueValue<NilValue> create();
 };
 
 class FunctionValue final : public Value {
+  friend class ValueEraser;
   FunctionValue(const Environment &env, const FunctionDeclaration *decl)
       : Value(ValueKind::Function), env(env), decl(decl) {}
 
@@ -210,8 +225,8 @@ public:
     return value->getKind() == ValueKind::Function;
   }
 
-  static unique_ptr<FunctionValue> create(const Environment &env,
-                                          const FunctionDeclaration *decl);
+  static UniqueValue<FunctionValue> create(const Environment &env,
+                                           const FunctionDeclaration *decl);
 
   const Environment &getEnvironment() const { return env; }
   const FunctionDeclaration *getDeclaration() const { return decl; }
@@ -222,6 +237,7 @@ private:
 };
 
 class LambdaValue final : public Value {
+  friend class ValueEraser;
   LambdaValue(Environment env, const LambdaExpression *expr)
       : Value(ValueKind::Lambda), env(env), expr(expr) {}
 
@@ -230,8 +246,8 @@ public:
     return value->getKind() == ValueKind::Lambda;
   }
 
-  static unique_ptr<LambdaValue> create(const Environment &env,
-                                        const LambdaExpression *expr);
+  static UniqueValue<LambdaValue> create(const Environment &env,
+                                         const LambdaExpression *expr);
 
   const Environment &getEnvironment() const { return env; }
   const LambdaExpression *getExpression() const { return expr; }
@@ -242,8 +258,8 @@ private:
 };
 
 class BuiltinFunctionValue final : public Value {
-  using funcBodyType = llvm::function_ref<unique_ptr<Value>(
-      ArrayRef<unique_ptr<Value>>, Diagnostic &, SMRange, MemoryContext *)>;
+  using funcBodyType = llvm::function_ref<UniqueValue<Value>(
+      ArrayRef<UniqueValue<Value>>, Diagnostic &, SMRange, MemoryContext *)>;
 
   BuiltinFunctionValue(StringRef name, StringRef helpMsg, funcBodyType func)
       : Value(ValueKind::BuiltinFunction), name(name), helpMsg(helpMsg),
@@ -259,7 +275,7 @@ public:
 
   funcBodyType getFuncBody() const { return func; }
 
-  static unique_ptr<BuiltinFunctionValue>
+  static UniqueValue<BuiltinFunctionValue>
   create(StringRef name, StringRef helpMsg, funcBodyType func);
 
 private:

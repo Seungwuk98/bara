@@ -30,7 +30,7 @@ bool Memory::assign(Value *value) {
 ImmutableMemory::~ImmutableMemory() = default;
 
 ImmutableMemory *ImmutableMemory::create(MemoryContext *context,
-                                         unique_ptr<Value> value) {
+                                         UniqueValue<Value> value) {
   auto *mem = context->alloc<ImmutableMemory>(sizeof(ImmutableMemory));
   return new (mem) ImmutableMemory(context, std::move(value));
 }
@@ -40,7 +40,7 @@ void AssignVisitor::visit(ImmutableMemory &mem) { fail = true; }
 ValueMemory::~ValueMemory() = default;
 
 ValueMemory *ValueMemory::create(MemoryContext *context,
-                                 unique_ptr<Value> value) {
+                                 UniqueValue<Value> value) {
   auto *mem = context->alloc<ValueMemory>(sizeof(ValueMemory));
   return new (mem) ValueMemory(context, std::move(value));
 }

@@ -26,7 +26,7 @@ public:
 #include "bara/ast/Statement.def"
 
   Memory *lvInterpret(const Expression &ast);
-  unique_ptr<Value> rvInterpret(const Expression &ast);
+  UniqueValue<Value> rvInterpret(const Expression &ast);
   Environment &getEnv() { return env; }
 
 private:
@@ -83,7 +83,7 @@ private:
   const ContinueStatement *continueFlag = nullptr;
   const BreakStatement *breakFlag = nullptr;
   const ReturnStatement *returnFlag = nullptr;
-  unique_ptr<Value> returnValue = nullptr;
+  UniqueValue<Value> returnValue = nullptr;
 };
 
 void interpret(const Program *program, MemoryContext *context,

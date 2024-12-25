@@ -37,8 +37,8 @@ void report(SMRange range, Diagnostic &diag, Diag kind, Args &&...args) {
 }
 
 #define DECL(Name)                                                             \
-  unique_ptr<Value> Name(ArrayRef<unique_ptr<Value>> args, Diagnostic &diag,   \
-                         SMRange range, MemoryContext *context)
+  UniqueValue<Value> Name(ArrayRef<UniqueValue<Value>> args, Diagnostic &diag, \
+                          SMRange range, MemoryContext *context)
 
 DECL(print) {
   for (const auto &[idx, arg] : llvm::enumerate(args)) {
@@ -149,7 +149,7 @@ DECL(format) {
   return StringValue::create(os.str());
 }
 
-using ValueSwitch = llvm::TypeSwitch<const Value *, unique_ptr<Value>>;
+using ValueSwitch = llvm::TypeSwitch<const Value *, UniqueValue<Value>>;
 
 DECL(len) {
   if (args.size() != 1) {
@@ -165,7 +165,7 @@ DECL(len) {
       .Case([&](const TupleValue *tupleV) {
         return IntegerValue::create(tupleV->size());
       })
-      .Default([&](const Value *) -> unique_ptr<Value> {
+      .Default([&](const Value *) -> UniqueValue<Value> {
         report(range, diag, error_unexpected_type, "list or tuple",
                value->toString());
         return nullptr;
@@ -182,7 +182,7 @@ DECL(intCast) {
   auto value = args[0].get();
   return ValueSwitch(value)
       .Case([&](const IntegerValue *intV) { return intV->clone(); })
-      .Case([&](const FloatValue *floatV) -> unique_ptr<Value> {
+      .Case([&](const FloatValue *floatV) -> UniqueValue<Value> {
         llvm::APSInt apsInt(64, false);
         bool isExact;
         auto status = floatV->getValue().convertToInteger(
@@ -198,7 +198,7 @@ DECL(intCast) {
       .Case([&](const BoolValue *boolV) {
         return IntegerValue::create(boolV->getValue());
       })
-      .Case([&](const StringValue *strV) -> unique_ptr<Value> {
+      .Case([&](const StringValue *strV) -> UniqueValue<Value> {
         auto value = strV->getValue();
         int64_t result;
         auto fail = value.getAsInteger(10, result);
@@ -228,7 +228,7 @@ DECL(floatCast) {
             APFloat(APFloat::IEEEdouble(), intV->getValue()));
       })
       .Case([&](const FloatValue *floatV) { return floatV->clone(); })
-      .Case([&](const StringValue *strV) -> unique_ptr<Value> {
+      .Case([&](const StringValue *strV) -> UniqueValue<Value> {
         auto value = strV->getValue();
         double result;
         auto fail = value.getAsDouble(result);
@@ -257,7 +257,7 @@ DECL(boolCast) {
         return BoolValue::create(intV->getValue());
       })
       .Case([&](const BoolValue *boolV) { return boolV->clone(); })
-      .Case([&](const StringValue *strV) -> unique_ptr<Value> {
+      .Case([&](const StringValue *strV) -> UniqueValue<Value> {
         auto value = llvm::StringSwitch<optional<bool>>(strV->getValue())
                          .Case("true", true)
                          .Case("false", false)
@@ -297,7 +297,7 @@ DECL(type) {
         return StringValue::create("builtin function");
       })
 
-      .Default([&](const Value *) -> unique_ptr<Value> {
+      .Default([&](const Value *) -> UniqueValue<Value> {
         llvm_unreachable("all type of value is handled");
       });
 }
@@ -345,8 +345,8 @@ DECL(split) {
 
   auto str = strValue->getValue();
   auto splitResult = llvm::split(str, sep);
-  SmallVector<unique_ptr<Value>> newValues = llvm::map_to_vector(
-      splitResult, [&](StringRef element) -> unique_ptr<Value> {
+  SmallVector<UniqueValue<Value>> newValues = llvm::map_to_vector(
+      splitResult, [&](StringRef element) -> UniqueValue<Value> {
         return StringValue::create(element);
       });
   return ListValue::create(context, newValues);

@@ -48,14 +48,14 @@ public:
     return stmt;
   }
 
-  unique_ptr<Value> eval(StringRef source) {
+  UniqueValue<Value> eval(StringRef source) {
     auto expr = parseExpression(source);
     if (diag.hasError())
       return nullptr;
     return eval(expr);
   }
 
-  unique_ptr<Value> eval(Expression *expr) {
+  UniqueValue<Value> eval(Expression *expr) {
     return interpreter.rvInterpret(*expr);
   }
 
@@ -77,7 +77,7 @@ public:
       return *this;
     }
 
-    unique_ptr<Value> eval(StringRef expr) { return tests->eval(expr); }
+    UniqueValue<Value> eval(StringRef expr) { return tests->eval(expr); }
 
     bool hasError() const { return tests->hasError(); }
 

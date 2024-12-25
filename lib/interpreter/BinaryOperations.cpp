@@ -6,7 +6,7 @@
 namespace bara {
 
 namespace {
-static unique_ptr<Value> null(const Value *) { return nullptr; }
+static UniqueValue<Value> null(const Value *) { return nullptr; }
 } // namespace
 
 template <typename ConcreteVisitor>
@@ -14,14 +14,14 @@ class BinaryOpVisitorImpl : public ConstValueVisitorBase<ConcreteVisitor> {
 public:
   BinaryOpVisitorImpl(const Value *r) : r(r), result(nullptr) {}
 
-  std::unique_ptr<Value> getResult() { return std::move(result); }
+  UniqueValue<Value> getResult() { return std::move(result); }
 
 protected:
   const Value *r;
-  std::unique_ptr<Value> result;
+  UniqueValue<Value> result;
 };
 
-using ValueSwitch = llvm::TypeSwitch<const Value *, unique_ptr<Value>>;
+using ValueSwitch = llvm::TypeSwitch<const Value *, UniqueValue<Value>>;
 
 class AddVisitor : public BinaryOpVisitorImpl<AddVisitor> {
 public:
@@ -30,36 +30,36 @@ public:
 };
 
 namespace {
-static unique_ptr<Value> add(const IntegerValue *l, const IntegerValue *r) {
+static UniqueValue<Value> add(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() + r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> add(const IntegerValue *l, const BoolValue *r) {
+static UniqueValue<Value> add(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() + r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> add(const BoolValue *l, const BoolValue *r) {
+static UniqueValue<Value> add(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() + r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> add(const IntegerValue *l, const FloatValue *r) {
+static UniqueValue<Value> add(const IntegerValue *l, const FloatValue *r) {
   auto apFloat = r->getValue();
   auto newValue =
       apFloat + llvm::APFloat(llvm::APFloat::IEEEdouble(), l->getValue());
   return FloatValue::create(newValue);
 }
-static unique_ptr<Value> add(const FloatValue *l, const FloatValue *r) {
+static UniqueValue<Value> add(const FloatValue *l, const FloatValue *r) {
   auto value = l->getValue() + r->getValue();
   return FloatValue::create(value);
 }
-static unique_ptr<Value> add(const StringValue *l, const StringValue *r) {
+static UniqueValue<Value> add(const StringValue *l, const StringValue *r) {
   auto value = l->getValue() + r->getValue();
   return StringValue::create(value.str());
 }
-static unique_ptr<Value> add(const ListValue *l, const ListValue *r) {
+static UniqueValue<Value> add(const ListValue *l, const ListValue *r) {
   auto *context = l->getVectorMemory()->getContext();
   assert(context == r->getVectorMemory()->getContext());
-  vector<unique_ptr<Value>> newValues;
+  vector<UniqueValue<Value>> newValues;
   newValues.reserve(l->size() + r->size());
   for (auto idx = 0; idx < l->size(); ++idx)
     newValues.emplace_back(l->getElement(idx)->view()->clone());
@@ -167,31 +167,31 @@ public:
 };
 
 namespace {
-static unique_ptr<Value> mul(const IntegerValue *l, const IntegerValue *r) {
+static UniqueValue<Value> mul(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() * r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> mul(const IntegerValue *l, const FloatValue *r) {
+static UniqueValue<Value> mul(const IntegerValue *l, const FloatValue *r) {
   auto floatL = APFloat(APFloat::IEEEdouble(), l->getValue());
   return FloatValue::create(floatL * r->getValue());
 }
-static unique_ptr<Value> mul(const FloatValue *l, const FloatValue *r) {
+static UniqueValue<Value> mul(const FloatValue *l, const FloatValue *r) {
   auto value = l->getValue() * r->getValue();
   return FloatValue::create(value);
 }
-static unique_ptr<Value> mul(const IntegerValue *l, const BoolValue *r) {
+static UniqueValue<Value> mul(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() * r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> mul(const BoolValue *l, const BoolValue *r) {
+static UniqueValue<Value> mul(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() * r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> mul(const IntegerValue *l, const ListValue *r) {
+static UniqueValue<Value> mul(const IntegerValue *l, const ListValue *r) {
   if (l->getValue() < 0)
     return nullptr;
   auto context = r->getVectorMemory()->getContext();
-  vector<unique_ptr<Value>> newValues;
+  vector<UniqueValue<Value>> newValues;
   auto newSize = l->getValue() * r->size();
   newValues.reserve(newSize);
 
@@ -203,7 +203,7 @@ static unique_ptr<Value> mul(const IntegerValue *l, const ListValue *r) {
 
   return ListValue::create(context, newValues);
 }
-static unique_ptr<Value> mul(const IntegerValue *l, const StringValue *r) {
+static UniqueValue<Value> mul(const IntegerValue *l, const StringValue *r) {
   if (l->getValue() < 0)
     return nullptr;
   string newStr;
@@ -263,7 +263,7 @@ public:
 
 void DivVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
                  if (r->getValue() == 0)
                    return nullptr;
                  auto value = l.getValue() / r->getValue();
@@ -461,15 +461,15 @@ public:
 };
 
 namespace {
-static unique_ptr<Value> bitAnd(const IntegerValue *l, const IntegerValue *r) {
+static UniqueValue<Value> bitAnd(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() & r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> bitAnd(const IntegerValue *l, const BoolValue *r) {
+static UniqueValue<Value> bitAnd(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() & r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> bitAnd(const BoolValue *l, const BoolValue *r) {
+static UniqueValue<Value> bitAnd(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() & r->getValue();
   return IntegerValue::create(value);
 }
@@ -501,15 +501,15 @@ public:
 #include "bara/interpreter/Value.def"
 };
 namespace {
-static unique_ptr<Value> bitOr(const IntegerValue *l, const IntegerValue *r) {
+static UniqueValue<Value> bitOr(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() | r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> bitOr(const IntegerValue *l, const BoolValue *r) {
+static UniqueValue<Value> bitOr(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() | r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> bitOr(const BoolValue *l, const BoolValue *r) {
+static UniqueValue<Value> bitOr(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() | r->getValue();
   return IntegerValue::create(value);
 }
@@ -542,15 +542,15 @@ public:
 #include "bara/interpreter/Value.def"
 };
 namespace {
-static unique_ptr<Value> bitXor(const IntegerValue *l, const IntegerValue *r) {
+static UniqueValue<Value> bitXor(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() ^ r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> bitXor(const IntegerValue *l, const BoolValue *r) {
+static UniqueValue<Value> bitXor(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() ^ r->getValue();
   return IntegerValue::create(value);
 }
-static unique_ptr<Value> bitXor(const BoolValue *l, const BoolValue *r) {
+static UniqueValue<Value> bitXor(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() ^ r->getValue();
   return IntegerValue::create(value);
 }
@@ -584,7 +584,7 @@ public:
 };
 void ShlVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
                  if (r->getValue() < 0)
                    return nullptr;
                  auto value = l.getValue() << r->getValue();
@@ -598,7 +598,7 @@ void ShlVisitor::visit(const IntegerValue &l) {
 }
 void ShlVisitor::visit(const BoolValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
                  if (r->getValue() < 0)
                    return nullptr;
                  auto value = l.getValue() << r->getValue();
@@ -626,7 +626,7 @@ public:
 };
 void ShrVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
                  if (r->getValue() < 0)
                    return nullptr;
                  auto value = l.getValue() >> r->getValue();
@@ -640,7 +640,7 @@ void ShrVisitor::visit(const IntegerValue &l) {
 }
 void ShrVisitor::visit(const BoolValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> unique_ptr<Value> {
+               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
                  if (r->getValue() < 0)
                    return nullptr;
                  auto value = l.getValue() >> r->getValue();
@@ -663,7 +663,7 @@ void ShrVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 namespace BinaryOp {
 #define BINARY_FUNC(funcName, VisitorName)                                     \
-  unique_ptr<Value> funcName(const Value *l, const Value *r) {                 \
+  UniqueValue<Value> funcName(const Value *l, const Value *r) {                \
     VisitorName visitor(r);                                                    \
     l->accept(visitor);                                                        \
     return visitor.getResult();                                                \
@@ -682,7 +682,7 @@ BINARY_FUNC(shr, ShrVisitor)
 #undef BINARY_FUNC
 
 #define COMPARE_FUNC(funcName, op)                                             \
-  unique_ptr<Value> funcName(const Value *l, const Value *r) {                 \
+  UniqueValue<Value> funcName(const Value *l, const Value *r) {                \
     Comparator cmp(r);                                                         \
     l->accept(cmp);                                                            \
     if (cmp.hasError())                                                        \

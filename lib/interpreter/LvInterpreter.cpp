@@ -18,7 +18,7 @@ void LvExprInterpreter::visit(const IndexExpression &expr) {
                             InterpretDiagnostic::error_string_index_assignment);
     return;
   }
-  if (std::holds_alternative<unique_ptr<Value>>(lv)) {
+  if (std::holds_alternative<UniqueValue<Value>>(lv)) {
     stmtInterpreter->report(expr.getRange(),
                             InterpretDiagnostic::error_tuple_index_assignment);
     return;
