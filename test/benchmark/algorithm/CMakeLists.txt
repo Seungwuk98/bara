@@ -6,7 +6,7 @@ message(STATUS "Found Python3: ${PYTHON}")
 function(add_algorithm algorithm)
   set(algorithm "test-${algorithm}")
 
-  cmake_parse_arguments(ALG "" "ANSWER;BARA;TEST_CASE;CHECKER" "" ${ARGN})
+  cmake_parse_arguments(ALG "" "ANSWER;BARA;TEST_CASE;CHECKER;ITERATION" "" ${ARGN})
   set(test_name "${algorithm}-${ALG_TEST_CASE}")
 
   set(case_output_dir "${CMAKE_CURRENT_BINARY_DIR}/case/${ALG_TEST_CASE}")
@@ -19,6 +19,7 @@ function(add_algorithm algorithm)
              --bara-interpreter=$<TARGET_FILE:bara> 
              --bara-file=${ALG_BARA} 
              --checker-file=$<TARGET_FILE:${ALG_CHECKER}>
+             --iteration=${ALG_ITERATION}
     DEPENDS ${ALG_ANSWER} ${ALG_CHECKER} ${case_output_dir}/output/
     COMMENT "Running test:${test_name}"
   )

@@ -2,6 +2,7 @@ import argparse
 import subprocess
 import os
 import resource
+import time as timeModule
 from enum import Enum, unique
 
 def parse_args():
@@ -34,6 +35,13 @@ def parse_args():
         help = 'checker file path',
     )
 
+    parser.add_argument(
+        '--iteration',
+        type = int,
+        default = 1,
+        help = 'iteration count',
+    )
+
     return parser.parse_args()
 
 class Time:
@@ -44,9 +52,9 @@ class Time:
     @staticmethod
     def run(command, *args, **kwargs):
         command = ['time', '-f', "%M", *command]
-        before = resource.getrusage(resource.RUSAGE_CHILDREN)
+        before = timeModule.time()
         result = subprocess.run(command, *args, **kwargs)
-        time = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime - before.ru_utime
+        time = timeModule.time() - before  
         if (result.returncode != 0):
             timeParser = Time(time, None, result)
         else:
@@ -65,6 +73,7 @@ def main():
     bara_interpreter = args.bara_interpreter
     bara_file = args.bara_file
     checker_file = args.checker_file
+    iteration = args.iteration
 
     output_dir = os.path.join(case_dir, 'output')
 
@@ -76,24 +85,45 @@ def main():
         print("====running test case: %d====" % input_file)
         input_file = os.path.join(case_dir, str(input_file))
         output_file = os.path.join(output_dir, os.path.basename(input_file))
-        command = [bara_interpreter, bara_file]
-        time = Time.run(command, stdin = open(input_file, 'r'), stdout = open(output_file, 'w'), stderr = subprocess.PIPE)
+        solveCommand = [bara_interpreter, bara_file]
+
+        totalExecTime = 0 
+        totalMemory = 0
+        with open(input_file, 'r') as inf, open(output_file, 'w') as outf:
+            time = Time.run(solveCommand, stdin = inf, stdout = outf, stderr = subprocess.PIPE)
       
-        if time.result.returncode != 0:
-            print(f'Execution Error: {os.path.basename(input_file)} failed')
-            print(time.result.stderr.decode('utf-8'))
-            exit(time.result.returncode)
+            if time.result.returncode != 0:
+                print(f'Execution Error: {os.path.basename(input_file)} failed')
+                print(time.result.stderr.decode('utf-8'))
+                exit(time.result.returncode)
 
-        answer_file = input_file + '.a'
+            answer_file = input_file + '.a'
 
-        command = [checker_file, input_file, output_file, answer_file]
-        result = subprocess.run(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
-        if result.returncode != 0:
-            print(f'Checker Error: {os.path.basename(input_file)} failed')
-            exit(result.returncode)
-        print(result.stderr.decode('utf-8').strip())
-        print(f'Execution Time: {time.time:.0f}ms')
-        print(f'Memory Usage: {int(time.memory)}KB')
+            checkerCommand = [checker_file, input_file, output_file, answer_file]
+            result = subprocess.run(checkerCommand, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+            if result.returncode != 0:
+                print(f'Checker Error: {os.path.basename(input_file)} failed')
+                exit(result.returncode)
+            print(result.stderr.decode('utf-8').strip())
+
+        totalExecTime += time.time 
+        totalMemory += time.memory
+
+        for i in range(iteration - 1):
+            with open(input_file, 'r') as inf, open(output_file, 'w') as outf:
+                time = Time.run(solveCommand, stdin = inf, stdout = outf, stderr = subprocess.PIPE)
+ 
+                if time.result.returncode != 0:
+                    print(f'Execution Error: {os.path.basename(input_file)} failed')
+                    print(time.result.stderr.decode('utf-8'))
+                    exit(time.result.returncode)
+
+                totalExecTime += time.time
+                totalMemory += time.memory
+
+        print(f'Total Execution Time: {totalExecTime / iteration:.0f}ms')
+        print(f'Total Memory Usage: {totalMemory // iteration}KB')
+
 
 if __name__ == '__main__':
     main()
