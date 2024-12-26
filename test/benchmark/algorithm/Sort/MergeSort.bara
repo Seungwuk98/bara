@@ -1,44 +1,47 @@
-fn merge(list, start, mid, end) {
-  var tmp = [];
+fn merge(list, buffer, start, mid, end) {
   var i = start;
   var j = mid + 1;
+  var k = 0;
   while i <= mid && j <= end {
     if list[i] < list[j] {
-      push(tmp, list[i]);
+      buffer[k] = list[i];
       i += 1;
     } else {
-      push(tmp, list[j]);
+      buffer[k] = list[j];
       j += 1;
     }
+    k += 1;
   }
 
   while i <= mid {
-    push(tmp, list[i]);
+    buffer[k] = list[i];
     i += 1;
+    k += 1;
   }
 
   while j <= end {
-    push(tmp, list[j]);
+    buffer[k] = list[j];
     j += 1;
+    k += 1;
   }
 
-
-  for (var i = 0; i < len(tmp); i += 1) {
-    list[start + i] = tmp[i];
+  for (var i = start; i <= end; i += 1) {
+    list[i] = buffer[i - start]; 
   }
 }
 
-fn mergeSortImpl(list, start, end) {
+fn mergeSortImpl(list, buffer, start, end) {
   if (start < end) {
     var mid = (start + end) / 2;
-    mergeSortImpl(list, start, mid);
-    mergeSortImpl(list, mid + 1, end);
-    merge(list, start, mid, end);
+    mergeSortImpl(list, buffer, start, mid);
+    mergeSortImpl(list, buffer, mid + 1, end);
+    merge(list, buffer, start, mid, end);
   }
 }
 
 fn mergeSort(list) {
-  mergeSortImpl(list, 0, len(list) - 1);
+  var buffer = [0] * len(list);
+  mergeSortImpl(list, buffer, 0, len(list) - 1);
   return list;
 }
 

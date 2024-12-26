@@ -6,6 +6,10 @@ namespace bara {
 class ValueEraser : public ValueVisitorBase<ValueEraser> {
 public:
   template <typename T>
+  void visit(T &value) {}
+
+  template <typename T>
+    requires std::is_same_v<T, FunctionValue> || std::is_same_v<T, LambdaValue>
   void visit(T &value) {
     value.~T();
   }
