@@ -13,21 +13,18 @@ public:
   template <typename T>
     requires std::is_same_v<T, TupleValue>
   void visit(T &value) {
-    for (auto *begin = value.template getTrailingObjects<UniqueValue<Value>>(),
-              *end = begin + value.size();
-         begin != end; ++begin) {
+    auto *begin = value.template getTrailingObjects<UniqueValue<Value>>();
+    auto *end = begin + value.size();
+    for (; begin != end; ++begin) {
       begin->reset();
     }
   }
-
-  static ValueEraser &get() {
-    static ValueEraser valueEraser;
-    return valueEraser;
-  }
 };
 
+static ValueEraser valueEraser;
+
 void ValueDeleter::operator()(Value *value) const {
-  value->accept(ValueEraser::get());
+  value->accept(valueEraser);
   free(value);
 }
 
