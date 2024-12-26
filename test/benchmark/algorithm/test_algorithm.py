@@ -109,7 +109,7 @@ def main():
         totalExecTime += time.time 
         totalMemory += time.memory
 
-        for i in range(iteration - 1):
+        for _ in range(iteration - 1):
             with open(input_file, 'r') as inf, open(output_file, 'w') as outf:
                 time = Time.run(solveCommand, stdin = inf, stdout = outf, stderr = subprocess.PIPE)
  
@@ -121,8 +121,8 @@ def main():
                 totalExecTime += time.time
                 totalMemory += time.memory
 
-        print(f'Total Execution Time: {totalExecTime / iteration:.0f}ms')
-        print(f'Total Memory Usage: {totalMemory // iteration}KB')
+        print(f'Average Execution Time: {totalExecTime / iteration:.0f}ms')
+        print(f'Average Memory Usage: {totalMemory // iteration}KB')
 
 
 if __name__ == '__main__':

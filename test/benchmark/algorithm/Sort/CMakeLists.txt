@@ -48,7 +48,7 @@ add_algorithm(
   CHECKER "test-sort_checker"
   ANSWER "test-sort_answer"
   BARA "${CMAKE_CURRENT_SOURCE_DIR}/MergeSort.bara"
-  ITERATION 20
+  ITERATION 30
 )
 
 add_algorithm(
