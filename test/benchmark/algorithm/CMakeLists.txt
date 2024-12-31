@@ -43,7 +43,7 @@ function(add_algorithm algorithm)
                --valgrind=${VALGRIND}
                --gc-threshold="${ALG_GC_THRESHOLDS}"
       DEPENDS ${ALG_ANSWER} ${ALG_CHECKER} ${test_name}_gen-test-case
-      BYPRODUCTS ${case_output_dir}/valgrind/
+      BYPRODUCTS ${case_output_dir}/valgrind/*
       COMMENT "Running valgrind test:${test_name}"
     )
   endif()
@@ -96,7 +96,11 @@ function(create_test_case algorithm)
     "${algorithm}-${GEN_NAME}_gen-test-case"
     DEPENDS ${GENERATORS} ${GEN_ANSWER} ${GEN_SCRIPTS}
     BYPRODUCTS ${GEN_INPUTS} ${GEN_OUTPUTS}
-    COMMAND ${PYTHON} ${TEST_CASE_GEN_PY}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${case_output_dir}
+            &&
+            ${CMAKE_COMMAND} -E rm -rf ${case_output_dir}/*
+            &&
+            ${PYTHON} ${TEST_CASE_GEN_PY}
             --arguments="${GEN_COMMANDS}"
             --generators="${GENERATOR_FILES}"
             --answer=$<TARGET_FILE:${GEN_ANSWER}>
