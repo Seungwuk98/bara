@@ -63,10 +63,12 @@ def main():
 
             with open(input_file, 'r') as f:
                 result = subprocess.run(command, stdin = f, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL)
-                if result.returncode != 0:
-                    print(f'Failed to run valgrind test {input_file}')
-                    return
-                print(f'Valgrind test {input_number}-{gc_threshold} passed')
+                if result.returncode == 1:
+                    print(f'Failed to run valgrind test {input_number}-{gc_threshold}')
+                elif result.returncode != 0:
+                    print(f'test {input_number}-{gc_threshold} execution failed')
+                else:
+                    print(f'Valgrind test {input_number}-{gc_threshold} passed')
 
 
 
