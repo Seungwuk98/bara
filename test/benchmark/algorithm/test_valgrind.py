@@ -58,7 +58,7 @@ def main():
         for input_number in files:
             print("====running valgrind test %d - threshold=%d====" % (input_number, gc_threshold))
             input_file = os.path.join(case_dir, str(input_number))
-            log_file = os.path.join(case_dir, 'valgrind', f'{input_number}.log')
+            log_file = os.path.join(case_dir, 'valgrind', f'{input_number}-{gc_threshold}.log')
             command = [valgrind, '--leak-check=full', f'--log-file={log_file}', '--quiet', '--error-exitcode=1', bara_interpreter, bara_file, f'--gc-threshold={gc_threshold}']
 
             with open(input_file, 'r') as f:
