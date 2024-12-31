@@ -1,7 +1,7 @@
 #include "bara/interpreter/Memory.h"
+#include "bara/context/GarbageCollector.h"
 #include "bara/context/MemoryContext.h"
 #include "bara/interpreter/Value.h"
-#include <llvm-18/llvm/Support/ErrorHandling.h>
 
 namespace bara {
 
@@ -27,30 +27,27 @@ bool Memory::assign(Value *value) {
   return !visitor.getFail();
 }
 
-ImmutableMemory::~ImmutableMemory() = default;
-
-ImmutableMemory *ImmutableMemory::create(MemoryContext *context,
-                                         UniqueValue<Value> value) {
-  auto *mem = context->alloc<ImmutableMemory>(sizeof(ImmutableMemory));
-  return new (mem) ImmutableMemory(context, std::move(value));
+ImmutableMemory *ImmutableMemory::create(MemoryContext *context, Value *value) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  auto *mem = context->alloc(sizeof(ImmutableMemory));
+  return new (mem) ImmutableMemory(context, value);
 }
 
 void AssignVisitor::visit(ImmutableMemory &mem) { fail = true; }
 
-ValueMemory::~ValueMemory() = default;
-
-ValueMemory *ValueMemory::create(MemoryContext *context,
-                                 UniqueValue<Value> value) {
-  auto *mem = context->alloc<ValueMemory>(sizeof(ValueMemory));
-  return new (mem) ValueMemory(context, std::move(value));
+ValueMemory *ValueMemory::create(MemoryContext *context, Value *value) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  auto *mem = context->alloc(sizeof(ValueMemory));
+  return new (mem) ValueMemory(context, value);
 }
 
-void AssignVisitor::visit(ValueMemory &mem) { mem.assign(value->clone()); }
+void AssignVisitor::visit(ValueMemory &mem) { mem.assign(value); }
 
 TupleMemory *TupleMemory::create(MemoryContext *context,
                                  ArrayRef<Memory *> mems) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
   auto allocSize = totalSizeToAlloc<Memory *>(mems.size());
-  auto *mem = context->alloc<TupleMemory>(allocSize);
+  auto *mem = context->alloc(allocSize);
   auto *tupleMem = new (mem) TupleMemory(context, mems.size());
   std::uninitialized_copy(mems.begin(), mems.end(),
                           tupleMem->getTrailingObjects<Memory *>());
@@ -69,7 +66,7 @@ void AssignVisitor::visit(TupleMemory &mem) {
   }
 
   for (auto [mem, valueView] : llvm::zip(mems, tupleValue->getValues())) {
-    if (!mem->assign(valueView.get())) {
+    if (!mem->assign(valueView)) {
       fail = true;
       return;
     }
@@ -77,13 +74,26 @@ void AssignVisitor::visit(TupleMemory &mem) {
 }
 
 VectorMemory *VectorMemory::create(MemoryContext *context,
-                                   ArrayRef<ValueMemory *> mems) {
-  auto *mem = context->alloc<VectorMemory>(sizeof(VectorMemory));
-  return new (mem) VectorMemory(context, mems);
+                                   ArrayRef<ValueMemory *> values,
+                                   size_t capacity) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  assert(values.size() <= capacity && "Values exceed capacity");
+
+  auto allocSize = totalSizeToAlloc<ValueMemory *>(capacity);
+  auto *mem = context->alloc(allocSize);
+  auto *vectorMem = new (mem) VectorMemory(context, capacity);
+  std::uninitialized_copy(values.begin(), values.end(),
+                          vectorMem->getTrailingObjects<ValueMemory *>());
+
+  for (auto idx = values.size(); idx < capacity; ++idx) {
+    vectorMem->getTrailingObjects<ValueMemory *>()[idx] =
+        ValueMemory::create(context, nullptr);
+  }
+  return vectorMem;
 }
 
 void AssignVisitor::visit(VectorMemory &mem) {
-  llvm_unreachable("Vector memory is not designed for assignment");
+  llvm_unreachable("VectorMemory should not be assigned");
 }
 
 } // namespace bara

@@ -49,6 +49,7 @@ add_algorithm(
   ANSWER "test-sort_answer"
   BARA "${CMAKE_CURRENT_SOURCE_DIR}/MergeSort.bara"
   ITERATION 30
+  GC_THRESHOLDS "10;20;40;80"
 )
 
 add_algorithm(
@@ -57,6 +58,7 @@ add_algorithm(
   CHECKER "test-sort_checker"
   ANSWER "test-sort_answer"
   BARA "${CMAKE_CURRENT_SOURCE_DIR}/MergeSort.bara"
-  ITERATION 1
+  ITERATION 5
+  GC_THRESHOLDS "1024;2048;4096;8192" 
 )
 

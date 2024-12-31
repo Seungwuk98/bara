@@ -58,14 +58,14 @@ TEST(INTERPRETER_TEST_SUITE, AddTest) {
   ASSERT_TRUE(listVal->isa<ListValue>());
   auto list = listVal->cast<ListValue>();
   ASSERT_EQ(list->size(), 4);
-  ASSERT_TRUE(list->getElement(0)->view()->isa<IntegerValue>());
-  ASSERT_EQ(list->getElement(0)->view()->cast<IntegerValue>()->getValue(), 1);
-  ASSERT_TRUE(list->getElement(1)->view()->isa<IntegerValue>());
-  ASSERT_EQ(list->getElement(1)->view()->cast<IntegerValue>()->getValue(), 2);
-  ASSERT_TRUE(list->getElement(2)->view()->isa<IntegerValue>());
-  ASSERT_EQ(list->getElement(2)->view()->cast<IntegerValue>()->getValue(), 3);
-  ASSERT_TRUE(list->getElement(3)->view()->isa<IntegerValue>());
-  ASSERT_EQ(list->getElement(3)->view()->cast<IntegerValue>()->getValue(), 4);
+  ASSERT_TRUE(list->get(0)->get()->isa<IntegerValue>());
+  ASSERT_EQ(list->get(0)->get()->cast<IntegerValue>()->getValue(), 1);
+  ASSERT_TRUE(list->get(1)->get()->isa<IntegerValue>());
+  ASSERT_EQ(list->get(1)->get()->cast<IntegerValue>()->getValue(), 2);
+  ASSERT_TRUE(list->get(2)->get()->isa<IntegerValue>());
+  ASSERT_EQ(list->get(2)->get()->cast<IntegerValue>()->getValue(), 3);
+  ASSERT_TRUE(list->get(3)->get()->isa<IntegerValue>());
+  ASSERT_EQ(list->get(3)->get()->cast<IntegerValue>()->getValue(), 4);
 }
 
 TEST(INTERPRETER_TEST_SUITE, SubTest) {
@@ -169,14 +169,14 @@ TEST(INTERPRETER_TEST_SUITE, MulTest) {
   ASSERT_TRUE(listVal->isa<ListValue>());
   auto list = listVal->cast<ListValue>();
   ASSERT_EQ(list->size(), 4);
-  ASSERT_TRUE(list->getElement(0)->view()->isa<IntegerValue>());
-  ASSERT_EQ(list->getElement(0)->view()->cast<IntegerValue>()->getValue(), 1);
-  ASSERT_TRUE(list->getElement(1)->view()->isa<IntegerValue>());
-  ASSERT_EQ(list->getElement(1)->view()->cast<IntegerValue>()->getValue(), 2);
-  ASSERT_TRUE(list->getElement(2)->view()->isa<IntegerValue>());
-  ASSERT_EQ(list->getElement(2)->view()->cast<IntegerValue>()->getValue(), 1);
-  ASSERT_TRUE(list->getElement(3)->view()->isa<IntegerValue>());
-  ASSERT_EQ(list->getElement(3)->view()->cast<IntegerValue>()->getValue(), 2);
+  ASSERT_TRUE(list->get(0)->get()->isa<IntegerValue>());
+  ASSERT_EQ(list->get(0)->get()->cast<IntegerValue>()->getValue(), 1);
+  ASSERT_TRUE(list->get(1)->get()->isa<IntegerValue>());
+  ASSERT_EQ(list->get(1)->get()->cast<IntegerValue>()->getValue(), 2);
+  ASSERT_TRUE(list->get(2)->get()->isa<IntegerValue>());
+  ASSERT_EQ(list->get(2)->get()->cast<IntegerValue>()->getValue(), 1);
+  ASSERT_TRUE(list->get(3)->get()->isa<IntegerValue>());
+  ASSERT_EQ(list->get(3)->get()->cast<IntegerValue>()->getValue(), 2);
 }
 
 TEST(INTERPRETER_TEST_SUITE, DivTest) {

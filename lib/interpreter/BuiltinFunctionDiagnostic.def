@@ -6,7 +6,7 @@ DIAG(
     error_invalid_argument_size,
     "Invalid argument size for builtin function '{0}'. expected({1}), got({2})",
     Error)
-DIAG(error_unexpected_type, "Unexpected type. expected({1}), got({2})", Error)
+DIAG(error_unexpected_type, "Unexpected type. expected({0}), got({1})", Error)
 DIAG(error_empty_list, "Attempted 'pop' to empty list", Error)
 DIAG(error_cast, "Cast error value({0}) to '{1}'", Error)
 DIAG(error_input, "Failed to get input from stdin", Error)

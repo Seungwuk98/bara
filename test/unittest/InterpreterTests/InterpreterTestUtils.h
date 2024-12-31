@@ -48,15 +48,15 @@ public:
     return stmt;
   }
 
-  UniqueValue<Value> eval(StringRef source) {
+  Value *eval(StringRef source) {
     auto expr = parseExpression(source);
     if (diag.hasError())
       return nullptr;
     return eval(expr);
   }
 
-  UniqueValue<Value> eval(Expression *expr) {
-    return interpreter.rvInterpret(*expr);
+  Value *eval(Expression *expr) {
+    return interpreter.rvInterpret(*expr).getValue();
   }
 
   bool hasError() const { return diag.hasError(); }
@@ -67,7 +67,7 @@ public:
   class TestProgram {
   public:
     TestProgram(InterpreterTests *tests)
-        : tests(tests), scope(tests->interpreter.getEnv()) {}
+        : tests(tests), scope(tests->interpreter.getCurrEnv()) {}
 
     TestProgram &statement(StringRef statement) {
       auto stmt = tests->parseStatement(statement);
@@ -77,7 +77,7 @@ public:
       return *this;
     }
 
-    UniqueValue<Value> eval(StringRef expr) { return tests->eval(expr); }
+    Value *eval(StringRef expr) { return tests->eval(expr); }
 
     bool hasError() const { return tests->hasError(); }
 

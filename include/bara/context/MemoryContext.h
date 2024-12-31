@@ -6,30 +6,37 @@
 
 namespace bara {
 class ImmutableMemory;
+class GC;
+class GCTarget;
 
 class MemoryContext {
 public:
+  using MarkFn = function<bool(void *)>;
+
   MemoryContext();
   ~MemoryContext();
 
-  template <typename DestructTy>
-  void *alloc(size_t size) {
-    void *ptr = malloc(size);
-    allocations.emplace_back(ptr, [](void *ptr) {
-      static_cast<DestructTy *>(ptr)->~DestructTy();
-      free(ptr);
-    });
-    return ptr;
-  }
+  GCTarget *alloc(size_t size);
 
   const DenseMap<StringRef, ImmutableMemory *> *getBuiltinFuncTable() const {
     return &builtinFuncTable;
   }
 
+  GC *getGC() const { return gc; }
+
+  void setGCThreshold(size_t threshold) { gcThreshold = threshold; }
+
 private:
-  vector<pair<void *, function<void(void *)>>> allocations;
+  vector<pair<GCTarget *, size_t>> allocations;
   DenseMap<StringRef, ImmutableMemory *> builtinFuncTable;
+
+  size_t totalAllocated = 0;
+  size_t gcThreshold = 1024 * 1024 * 10; // 10MB
+
+  friend class GC;
+  GC *gc;
 };
+
 } // namespace bara
 
 #endif // BARA_MEMORY_CONTEXT_H

@@ -2,13 +2,13 @@
 #define BARA_VALUE_H
 
 #include "bara/ast/AST.h"
+#include "bara/context/GarbageCollector.h"
+#include "bara/context/MemoryContext.h"
 #include "bara/diagnostic/Diagnostic.h"
 #include "bara/interpreter/Environment.h"
 #include "bara/interpreter/Memory.h"
-#include "bara/interpreter/ValueDeleter.h"
 #include "bara/utils/VisitorBase.h"
 #include "llvm/ADT/APFloat.h"
-#include <llvm-18/llvm/Support/TrailingObjects.h>
 
 namespace bara {
 
@@ -51,7 +51,7 @@ using ValueVisitorBase =
 #include "bara/interpreter/Value.def"
                        >;
 
-class Value {
+class Value : public GCTarget {
 public:
   using KindTy = ValueKind;
 
@@ -79,29 +79,33 @@ public:
   ValueKind getKind() const { return kind; }
 
   string toString() const;
-  UniqueValue<Value> clone() const;
   optional<bool> toBool() const;
   bool isEqual(const Value *value) const;
 
   void accept(ConstValueVisitor &visitor) const;
   void accept(ValueVisitor &visitor);
 
+  MemoryContext *getContext() const { return context; }
+
 protected:
-  Value(ValueKind kind) : kind(kind) {}
+  Value(MemoryContext *context, ValueKind kind)
+      : context(context), kind(kind) {}
 
 private:
+  MemoryContext *context;
   ValueKind kind;
 };
 
 class IntegerValue final : public Value {
-  IntegerValue(uint64_t value) : Value(ValueKind::Integer), value(value) {}
+  IntegerValue(MemoryContext *context, uint64_t value)
+      : Value(context, ValueKind::Integer), value(value) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Integer;
   }
 
-  static UniqueValue<IntegerValue> create(int64_t value);
+  static IntegerValue *create(MemoryContext *ctx, int64_t value);
   int64_t getValue() const { return value; }
 
 private:
@@ -109,14 +113,15 @@ private:
 };
 
 class BoolValue final : public Value {
-  BoolValue(bool value) : Value(ValueKind::Bool), value(value) {}
+  BoolValue(MemoryContext *context, bool value)
+      : Value(context, ValueKind::Bool), value(value) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Bool;
   }
 
-  static UniqueValue<BoolValue> create(bool value);
+  static BoolValue *create(MemoryContext *ctx, bool value);
   bool getValue() const { return value; }
 
 private:
@@ -124,17 +129,18 @@ private:
 };
 
 class FloatValue final : public Value {
-  FloatValue(StringRef value)
-      : Value(ValueKind::Float), value(APFloat::IEEEdouble(), value) {}
-  FloatValue(const APFloat &value) : Value(ValueKind::Float), value(value) {}
+  FloatValue(MemoryContext *context, StringRef value)
+      : Value(context, ValueKind::Float), value(APFloat::IEEEdouble(), value) {}
+  FloatValue(MemoryContext *context, const APFloat &value)
+      : Value(context, ValueKind::Float), value(value) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Float;
   }
 
-  static UniqueValue<FloatValue> create(StringRef value);
-  static UniqueValue<FloatValue> create(const APFloat &value);
+  static FloatValue *create(MemoryContext *ctx, StringRef value);
+  static FloatValue *create(MemoryContext *ctx, const APFloat &value);
   const APFloat &getValue() const { return value; }
 
 private:
@@ -143,14 +149,15 @@ private:
 
 class StringValue final : public Value,
                           public TrailingObjects<StringValue, char> {
-  StringValue(size_t length) : Value(ValueKind::String), length(length) {}
+  StringValue(MemoryContext *context, size_t length)
+      : Value(context, ValueKind::String), length(length) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::String;
   }
 
-  static UniqueValue<StringValue> create(StringRef value);
+  static StringValue *create(MemoryContext *ctx, StringRef value);
   StringRef getValue() const { return {getTrailingObjects<char>(), length}; }
   size_t size() const { return length; }
 
@@ -159,44 +166,49 @@ private:
 };
 
 class ListValue final : public Value {
-  ListValue(VectorMemory *memory) : Value(ValueKind::List), memory(memory) {}
+  ListValue(MemoryContext *context, size_t length, VectorMemory *memories)
+      : Value(context, ValueKind::List), length(length), memories(memories) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::List;
   }
 
-  static UniqueValue<ListValue>
-  create(MemoryContext *context, MutableArrayRef<UniqueValue<Value>> values);
+  void reallocate(size_t newCapacity);
+  void push(Value *value);
+  Value *pop();
+  ValueMemory *get(size_t index) const;
+  size_t size() const { return length; }
+  bool empty() const { return length == 0; }
+  VectorMemory *getVectorMemory() const { return memories; }
+  ArrayRef<ValueMemory *> getMemories() const {
+    return memories->getMemories().slice(0, length);
+  }
 
-  static UniqueValue<ListValue> create(VectorMemory *memory);
-
-  VectorMemory *getVectorMemory() const { return memory; }
-  ValueMemory *getElement(size_t index) const { return memory->get(index); }
-  size_t size() const { return memory->size(); }
-  bool empty() const { return memory->empty(); }
+  static ListValue *create(MemoryContext *context, ArrayRef<Value *> values);
 
 private:
-  VectorMemory *memory;
+  size_t length;
+  VectorMemory *memories;
 };
 
-class TupleValue final
-    : public Value,
-      public TrailingObjects<TupleValue, UniqueValue<Value>> {
+class TupleValue final : public Value,
+                         public TrailingObjects<TupleValue, Value *> {
   friend class ValueEraser;
-  TupleValue(size_t length) : Value(ValueKind::Tuple), length(length) {}
+  TupleValue(MemoryContext *context, size_t length)
+      : Value(context, ValueKind::Tuple), length(length) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Tuple;
   }
 
-  static UniqueValue<TupleValue> create(SmallVector<UniqueValue<Value>> mems);
+  static TupleValue *create(MemoryContext *ctx, ArrayRef<Value *> mems);
 
-  ArrayRef<UniqueValue<Value>> getValues() const {
-    return {getTrailingObjects<UniqueValue<Value>>(), length};
+  ArrayRef<Value *> getValues() const {
+    return {getTrailingObjects<Value *>(), length};
   }
-  Value *getElement(size_t index) const { return getValues()[index].get(); }
+  Value *getElement(size_t index) const { return getValues()[index]; }
   size_t size() const { return length; }
   bool empty() const { return length == 0; }
 
@@ -206,64 +218,77 @@ private:
 
 class NilValue final : public Value {
 public:
-  NilValue() : Value(ValueKind::Nil) {}
+  NilValue(MemoryContext *context) : Value(context, ValueKind::Nil) {}
 
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Nil;
   }
 
-  static UniqueValue<NilValue> create();
+  static NilValue *create(MemoryContext *ctx);
 };
 
-class FunctionValue final : public Value {
+class FunctionValue final
+    : public Value,
+      public TrailingObjects<FunctionValue, pair<StringRef, Memory *>> {
   friend class ValueEraser;
-  FunctionValue(const Environment &env, const FunctionDeclaration *decl)
-      : Value(ValueKind::Function), env(env), decl(decl) {}
+  FunctionValue(MemoryContext *context, size_t envVarLength,
+                const FunctionDeclaration *decl)
+      : Value(context, ValueKind::Function), envVarLength(envVarLength),
+        decl(decl) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Function;
   }
 
-  static UniqueValue<FunctionValue> create(const Environment &env,
-                                           const FunctionDeclaration *decl);
+  static FunctionValue *create(MemoryContext *ctx, const Environment &env,
+                               const FunctionDeclaration *decl);
 
-  const Environment &getEnvironment() const { return env; }
   const FunctionDeclaration *getDeclaration() const { return decl; }
+  ArrayRef<pair<StringRef, Memory *>> getEnvVars() const {
+    return {getTrailingObjects<pair<StringRef, Memory *>>(), envVarLength};
+  }
 
 private:
-  Environment env;
+  size_t envVarLength;
   const FunctionDeclaration *decl;
 };
 
-class LambdaValue final : public Value {
+class LambdaValue final
+    : public Value,
+      public TrailingObjects<LambdaValue, pair<StringRef, Memory *>> {
   friend class ValueEraser;
-  LambdaValue(Environment env, const LambdaExpression *expr)
-      : Value(ValueKind::Lambda), env(env), expr(expr) {}
+  LambdaValue(MemoryContext *context, size_t captureLength,
+              const LambdaExpression *expr)
+      : Value(context, ValueKind::Lambda), captureLength(captureLength),
+        expr(expr) {}
 
 public:
   static bool classof(const Value *value) {
     return value->getKind() == ValueKind::Lambda;
   }
 
-  static UniqueValue<LambdaValue> create(const Environment &env,
-                                         const LambdaExpression *expr);
+  static LambdaValue *create(MemoryContext *ctx, const Environment &env,
+                             const LambdaExpression *expr);
 
-  const Environment &getEnvironment() const { return env; }
   const LambdaExpression *getExpression() const { return expr; }
+  ArrayRef<pair<StringRef, Memory *>> getCaptures() const {
+    return {getTrailingObjects<pair<StringRef, Memory *>>(), captureLength};
+  }
 
 private:
-  Environment env;
+  size_t captureLength;
   const LambdaExpression *expr;
 };
 
 class BuiltinFunctionValue final : public Value {
-  using funcBodyType = llvm::function_ref<UniqueValue<Value>(
-      ArrayRef<UniqueValue<Value>>, Diagnostic &, SMRange, MemoryContext *)>;
+  using funcBodyType = llvm::function_ref<Value *(
+      ArrayRef<Value *>, Diagnostic &, SMRange, MemoryContext *)>;
 
-  BuiltinFunctionValue(StringRef name, StringRef helpMsg, funcBodyType func)
-      : Value(ValueKind::BuiltinFunction), name(name), helpMsg(helpMsg),
-        func(func) {}
+  BuiltinFunctionValue(MemoryContext *context, StringRef name,
+                       StringRef helpMsg, funcBodyType func)
+      : Value(context, ValueKind::BuiltinFunction), name(name),
+        helpMsg(helpMsg), func(func) {}
 
 public:
   static bool classof(const Value *value) {
@@ -275,8 +300,8 @@ public:
 
   funcBodyType getFuncBody() const { return func; }
 
-  static UniqueValue<BuiltinFunctionValue>
-  create(StringRef name, StringRef helpMsg, funcBodyType func);
+  static BuiltinFunctionValue *create(MemoryContext *ctx, StringRef name,
+                                      StringRef helpMsg, funcBodyType func);
 
 private:
   StringRef name;

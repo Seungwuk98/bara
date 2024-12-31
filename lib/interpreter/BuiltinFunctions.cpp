@@ -37,8 +37,8 @@ void report(SMRange range, Diagnostic &diag, Diag kind, Args &&...args) {
 }
 
 #define DECL(Name)                                                             \
-  UniqueValue<Value> Name(ArrayRef<UniqueValue<Value>> args, Diagnostic &diag, \
-                          SMRange range, MemoryContext *context)
+  Value *Name(ArrayRef<Value *> args, Diagnostic &diag, SMRange range,         \
+              MemoryContext *context)
 
 DECL(print) {
   for (const auto &[idx, arg] : llvm::enumerate(args)) {
@@ -47,7 +47,7 @@ DECL(print) {
       getPrintOS() << " ";
   }
   getPrintOS() << "\n";
-  return NilValue::create();
+  return NilValue::create(context);
 }
 
 DECL(help) {
@@ -56,7 +56,7 @@ DECL(help) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   if (!value->isa<BuiltinFunctionValue>()) {
     report(range, diag, error_unexpected_type, "builtin function",
            value->toString());
@@ -65,7 +65,7 @@ DECL(help) {
 
   auto funcValue = value->cast<BuiltinFunctionValue>();
   outs() << funcValue->getHelp();
-  return NilValue::create();
+  return NilValue::create(context);
 }
 
 DECL(push) {
@@ -74,17 +74,15 @@ DECL(push) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   if (!value->isa<ListValue>()) {
     report(range, diag, error_unexpected_type, "list value", value->toString());
     return nullptr;
   }
 
   auto listValue = value->cast<ListValue>();
-  auto newMemory = ValueMemory::create(context, args[1]->clone());
-  listValue->getVectorMemory()->push(newMemory);
-
-  return NilValue::create();
+  listValue->push(args[1]);
+  return NilValue::create(context);
 }
 
 DECL(pop) {
@@ -93,22 +91,20 @@ DECL(pop) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   if (!value->isa<ListValue>()) {
     report(range, diag, error_unexpected_type, "list value", value->toString());
     return nullptr;
   }
 
   auto listValue = value->cast<ListValue>();
-  auto vectorMemory = listValue->getVectorMemory();
-  if (vectorMemory->empty()) {
+  if (listValue->empty()) {
     report(range, diag, error_empty_list);
     return nullptr;
   }
 
-  auto *memory = vectorMemory->get(vectorMemory->size() - 1);
-  vectorMemory->pop();
-  return memory->view()->clone();
+  auto *poped = listValue->pop();
+  return poped;
 }
 
 DECL(str) {
@@ -117,11 +113,11 @@ DECL(str) {
     return nullptr;
   }
   auto value = args[0]->toString();
-  return StringValue::create(value);
+  return StringValue::create(context, value);
 }
 
 DECL(format) {
-  auto first = args[0].get();
+  auto first = args[0];
   if (!first->isa<StringValue>()) {
     report(range, diag, error_unexpected_type, "str value", first->toString());
     return nullptr;
@@ -146,10 +142,10 @@ DECL(format) {
     pos = formatIdx + 2;
   }
 
-  return StringValue::create(os.str());
+  return StringValue::create(context, os.str());
 }
 
-using ValueSwitch = llvm::TypeSwitch<const Value *, UniqueValue<Value>>;
+using ValueSwitch = llvm::TypeSwitch<Value *, Value *>;
 
 DECL(len) {
   if (args.size() != 1) {
@@ -157,15 +153,15 @@ DECL(len) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   return ValueSwitch(value)
       .Case([&](const ListValue *listV) {
-        return IntegerValue::create(listV->size());
+        return IntegerValue::create(context, listV->size());
       })
       .Case([&](const TupleValue *tupleV) {
-        return IntegerValue::create(tupleV->size());
+        return IntegerValue::create(context, tupleV->size());
       })
-      .Default([&](const Value *) -> UniqueValue<Value> {
+      .Default([&](Value *) -> Value * {
         report(range, diag, error_unexpected_type, "list or tuple",
                value->toString());
         return nullptr;
@@ -179,10 +175,10 @@ DECL(intCast) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   return ValueSwitch(value)
-      .Case([&](const IntegerValue *intV) { return intV->clone(); })
-      .Case([&](const FloatValue *floatV) -> UniqueValue<Value> {
+      .Case([&](IntegerValue *intV) { return intV; })
+      .Case([&](const FloatValue *floatV) -> Value * {
         llvm::APSInt apsInt(64, false);
         bool isExact;
         auto status = floatV->getValue().convertToInteger(
@@ -193,12 +189,12 @@ DECL(intCast) {
           return nullptr;
         }
 
-        return IntegerValue::create(apsInt.getSExtValue());
+        return IntegerValue::create(context, apsInt.getSExtValue());
       })
       .Case([&](const BoolValue *boolV) {
-        return IntegerValue::create(boolV->getValue());
+        return IntegerValue::create(context, boolV->getValue());
       })
-      .Case([&](const StringValue *strV) -> UniqueValue<Value> {
+      .Case([&](const StringValue *strV) -> Value * {
         auto value = strV->getValue();
         int64_t result;
         auto fail = value.getAsInteger(10, result);
@@ -206,7 +202,7 @@ DECL(intCast) {
           report(range, diag, error_cast, strV->toString(), "int cast");
           return nullptr;
         }
-        return IntegerValue::create(result);
+        return IntegerValue::create(context, result);
       })
       .Default([&](const Value *) {
         report(range, diag, error_cast, value->toString(), "int cast");
@@ -221,14 +217,14 @@ DECL(floatCast) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   return ValueSwitch(value)
       .Case([&](const IntegerValue *intV) {
         return FloatValue::create(
-            APFloat(APFloat::IEEEdouble(), intV->getValue()));
+            context, APFloat(APFloat::IEEEdouble(), intV->getValue()));
       })
-      .Case([&](const FloatValue *floatV) { return floatV->clone(); })
-      .Case([&](const StringValue *strV) -> UniqueValue<Value> {
+      .Case([&](FloatValue *floatV) { return floatV; })
+      .Case([&](const StringValue *strV) -> Value * {
         auto value = strV->getValue();
         double result;
         auto fail = value.getAsDouble(result);
@@ -236,7 +232,7 @@ DECL(floatCast) {
           report(range, diag, error_cast, strV->toString(), "float");
           return nullptr;
         }
-        return FloatValue::create(APFloat(result));
+        return FloatValue::create(context, APFloat(result));
       })
       .Default([&](const Value *) {
         report(range, diag, error_cast, value->toString(), "float");
@@ -251,13 +247,13 @@ DECL(boolCast) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   return ValueSwitch(value)
       .Case([&](const IntegerValue *intV) {
-        return BoolValue::create(intV->getValue());
+        return BoolValue::create(context, intV->getValue());
       })
-      .Case([&](const BoolValue *boolV) { return boolV->clone(); })
-      .Case([&](const StringValue *strV) -> UniqueValue<Value> {
+      .Case([&](BoolValue *boolV) { return boolV; })
+      .Case([&](const StringValue *strV) -> Value * {
         auto value = llvm::StringSwitch<optional<bool>>(strV->getValue())
                          .Case("true", true)
                          .Case("false", false)
@@ -266,7 +262,7 @@ DECL(boolCast) {
           report(range, diag, error_cast, strV->toString(), "bool");
           return nullptr;
         }
-        return BoolValue::create(*value);
+        return BoolValue::create(context, *value);
       })
       .Default([&](const Value *) {
         report(range, diag, error_cast, value->toString(), "bool");
@@ -280,24 +276,39 @@ DECL(type) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   return ValueSwitch(value)
-      .Case([&](const IntegerValue *) { return StringValue::create("int"); })
-      .Case([&](const FloatValue *) { return StringValue::create("float"); })
-      .Case([&](const BoolValue *) { return StringValue::create("bool"); })
-      .Case([&](const StringValue *) { return StringValue::create("str"); })
-      .Case([&](const ListValue *) { return StringValue::create("list"); })
-      .Case([&](const TupleValue *) { return StringValue::create("tuple"); })
-      .Case([&](const NilValue *) { return StringValue::create("nil"); })
-      .Case([&](const FunctionValue *) {
-        return StringValue::create("function");
+      .Case([&](const IntegerValue *) {
+        return StringValue::create(context, "int");
       })
-      .Case([&](const LambdaValue *) { return StringValue::create("lambda"); })
+      .Case([&](const FloatValue *) {
+        return StringValue::create(context, "float");
+      })
+      .Case([&](const BoolValue *) {
+        return StringValue::create(context, "bool");
+      })
+      .Case([&](const StringValue *) {
+        return StringValue::create(context, "str");
+      })
+      .Case([&](const ListValue *) {
+        return StringValue::create(context, "list");
+      })
+      .Case([&](const TupleValue *) {
+        return StringValue::create(context, "tuple");
+      })
+      .Case(
+          [&](const NilValue *) { return StringValue::create(context, "nil"); })
+      .Case([&](const FunctionValue *) {
+        return StringValue::create(context, "function");
+      })
+      .Case([&](const LambdaValue *) {
+        return StringValue::create(context, "lambda");
+      })
       .Case([&](const BuiltinFunctionValue *) {
-        return StringValue::create("builtin function");
+        return StringValue::create(context, "builtin function");
       })
 
-      .Default([&](const Value *) -> UniqueValue<Value> {
+      .Default([&](const Value *) -> Value * {
         llvm_unreachable("all type of value is handled");
       });
 }
@@ -316,7 +327,7 @@ DECL(input) {
     return nullptr;
   }
 
-  return StringValue::create(input);
+  return StringValue::create(context, input);
 }
 
 DECL(split) {
@@ -326,7 +337,7 @@ DECL(split) {
     return nullptr;
   }
 
-  auto value = args[0].get();
+  auto value = args[0];
   if (!value->isa<StringValue>()) {
     report(range, diag, error_unexpected_type, "str", value->toString());
     return nullptr;
@@ -335,7 +346,7 @@ DECL(split) {
   auto strValue = value->cast<StringValue>();
   StringRef sep = " ";
   if (args.size() == 2) {
-    auto sepValue = args[1].get();
+    auto sepValue = args[1];
     if (!sepValue->isa<StringValue>()) {
       report(range, diag, error_unexpected_type, "str", sepValue->toString());
       return nullptr;
@@ -345,9 +356,9 @@ DECL(split) {
 
   auto str = strValue->getValue();
   auto splitResult = llvm::split(str, sep);
-  SmallVector<UniqueValue<Value>> newValues = llvm::map_to_vector(
-      splitResult, [&](StringRef element) -> UniqueValue<Value> {
-        return StringValue::create(element);
+  SmallVector<Value *> newValues =
+      llvm::map_to_vector(splitResult, [&](StringRef element) -> Value * {
+        return StringValue::create(context, element);
       });
   return ListValue::create(context, newValues);
 }
@@ -366,12 +377,12 @@ DECL(random) {
 
   auto randValue = dis(gen);
   if (args.size() == 2) {
-    auto start = args[0].get();
+    auto start = args[0];
     if (!start->isa<IntegerValue>()) {
       report(range, diag, error_unexpected_type, "int", start->toString());
       return nullptr;
     }
-    auto end = args[1].get();
+    auto end = args[1];
     if (!end->isa<IntegerValue>()) {
       report(range, diag, error_unexpected_type, "int", end->toString());
       return nullptr;
@@ -391,7 +402,7 @@ DECL(random) {
     randValue += startValue;
   }
 
-  return IntegerValue::create(randValue);
+  return IntegerValue::create(context, randValue);
 }
 
 #undef DECL

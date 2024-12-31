@@ -2,6 +2,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace bara {
@@ -12,6 +13,7 @@ using std::pair;
 using std::size_t;
 using std::string;
 using std::tuple;
+using std::variant;
 using std::vector;
 
 using std::function;

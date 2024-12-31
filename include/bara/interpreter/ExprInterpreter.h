@@ -2,6 +2,7 @@
 #define BARA_EXPR_INTERPRETER_H
 
 #include "bara/ast/AST.h"
+#include "bara/context/GarbageCollector.h"
 #include "bara/diagnostic/Diagnostic.h"
 #include "bara/interpreter/Memory.h"
 #include "bara/interpreter/StmtInterpreter.h"
@@ -22,10 +23,10 @@ public:
         stmtInterpreter(stmtInterpreter) {}
 
   Memory *interpretIdentifier(const IdentifierExpression *expr);
-  std::variant<std::monostate, Memory *, UniqueValue<Value>, char>
+  std::variant<std::monostate, GC::RootRegister, char>
   interpretIndex(const IndexExpression *expr);
 
-  Environment &getEnv() { return stmtInterpreter->env; }
+  Environment &getCurrEnv() { return stmtInterpreter->getCurrEnv(); }
 
 protected:
   Diagnostic &diag;
@@ -46,15 +47,15 @@ public:
 #define EXPRESSION(Name) void visit(const Name &expr);
 #include "bara/ast/Expression.def"
 
-  UniqueValue<Value> getResult() { return std::move(result); }
+  GC::RootRegister getResult() { return std::move(result); }
 
-  UniqueValue<Value> binaryOp(SMRange range, const Value *l, const Value *r,
-                              Operator op);
+  optional<GC::RootRegister> binaryOp(SMRange range, const Value *l,
+                                      const Value *r, Operator op);
 
 private:
   friend class StmtInterpreter;
 
-  UniqueValue<Value> result = nullptr;
+  GC::RootRegister result;
 };
 
 string evalStringLiteral(StringRef buffer);
@@ -71,41 +72,41 @@ public:
 #define EXPRESSION(Name) void visit(const Name &expr);
 #include "bara/ast/Expression.def"
 
-  Memory *getResult() { return result; }
+  GC::RootRegister getResult() { return std::move(result); }
 
 private:
   friend class StmtInterpreter;
 
-  Memory *result;
+  GC::RootRegister result;
 };
 
 template <typename ConcreteType>
 Memory *CommonExprInterpreter<ConcreteType>::interpretIdentifier(
     const IdentifierExpression *expr) {
-  auto *memory = getEnv().lookup(expr->getName());
+  auto *memory = getCurrEnv().lookup(expr->getName());
   if (!memory) {
     stmtInterpreter->report(expr->getRange(),
                             InterpretDiagnostic::error_unknown_identifier,
                             expr->getName());
     return nullptr;
   }
+
   return memory;
 }
 
 template <typename ConcreteType>
-std::variant<std::monostate, Memory *, UniqueValue<Value>, char>
+std::variant<std::monostate, GC::RootRegister, char>
 CommonExprInterpreter<ConcreteType>::interpretIndex(
     const IndexExpression *expr) {
-  using IndexReturnTy =
-      std::variant<std::monostate, Memory *, UniqueValue<Value>, char>;
+  using IndexReturnTy = std::variant<std::monostate, GC::RootRegister, char>;
   auto value = stmtInterpreter->rvInterpret(*expr->getLhs());
   if (diag.hasError())
     return {};
 
-  if (!value->isa<ListValue, TupleValue, StringValue>()) {
+  if (!value.getValue()->isa<ListValue, TupleValue, StringValue>()) {
     stmtInterpreter->report(expr->getLhs()->getRange(),
                             InterpretDiagnostic::error_invalid_type_to_access,
-                            value->toString());
+                            value.getValue()->toString());
     return {};
   }
 
@@ -113,15 +114,15 @@ CommonExprInterpreter<ConcreteType>::interpretIndex(
   if (diag.hasError())
     return {};
 
-  if (!index->isa<IntegerValue>()) {
+  if (!index.getValue()->isa<IntegerValue>()) {
     stmtInterpreter->report(expr->getRhs()->getRange(),
                             InterpretDiagnostic::error_invalid_type_for_access,
-                            index->toString());
+                            index.getValue()->toString());
     return {};
   }
 
-  int64_t indexValue = index->cast<IntegerValue>()->getValue();
-  return llvm::TypeSwitch<Value *, IndexReturnTy>(value.get())
+  int64_t indexValue = index.getValue()->cast<IntegerValue>()->getValue();
+  return llvm::TypeSwitch<Value *, IndexReturnTy>(value.getValue())
       .Case([&](const StringValue *str) -> IndexReturnTy {
         if (indexValue < 0 || indexValue >= str->getValue().size()) {
           stmtInterpreter->report(expr->getRange(),
@@ -138,7 +139,7 @@ CommonExprInterpreter<ConcreteType>::interpretIndex(
                                   indexValue, list->size());
           return {};
         }
-        return list->getElement(indexValue);
+        return context->getGC()->registerRoot(list->get(indexValue));
       })
       .Default([&](const Value *value) -> IndexReturnTy {
         auto tuple = value->cast<TupleValue>();
@@ -148,7 +149,7 @@ CommonExprInterpreter<ConcreteType>::interpretIndex(
                                   indexValue, tuple->size());
           return {};
         }
-        return tuple->getElement(indexValue)->clone();
+        return context->getGC()->registerRoot(tuple->getElement(indexValue));
       });
 }
 

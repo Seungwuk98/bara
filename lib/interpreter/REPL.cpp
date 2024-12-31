@@ -47,7 +47,7 @@ void REPL::eval(StringRef line) {
     auto value = interpreter.rvInterpret(*expr);
     if (diag.hasError())
       return;
-    show(value.get());
+    show(value.getValue());
   } else
     stmt->accept(interpreter);
 }
@@ -89,7 +89,7 @@ void REPLShowVisitor::visit(const StringValue &value) {
 void REPLShowVisitor::visit(const ListValue &value) {
   os << '[';
   for (auto idx = 0; idx < value.size(); ++idx) {
-    value.getElement(idx)->view()->accept(*this);
+    value.get(idx)->get()->accept(*this);
     if (idx != value.size() - 1)
       os << ", ";
   }

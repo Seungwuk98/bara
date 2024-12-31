@@ -1,8 +1,8 @@
 #ifndef BARA_MEMORY_H
 #define BARA_MEMORY_H
 
+#include "bara/context/GarbageCollector.h"
 #include "bara/context/MemoryContext.h"
-#include "bara/interpreter/ValueDeleter.h"
 #include "bara/utils/LLVM.h"
 #include "bara/utils/VisitorBase.h"
 
@@ -40,7 +40,7 @@ using MemoryVisitorBase =
 #include "bara/interpreter/Memory.def"
                        >;
 
-class Memory {
+class Memory : public GCTarget {
 public:
   using KindTy = MemoryKind;
 
@@ -73,6 +73,8 @@ public:
 
   MemoryContext *getContext() const { return context; }
 
+  static bool classof(const GCTarget *target);
+
 protected:
   Memory(MemoryContext *context, MemoryKind kind)
       : context(context), kind(kind) {}
@@ -83,42 +85,38 @@ private:
 };
 
 class ImmutableMemory final : public Memory {
-  ImmutableMemory(MemoryContext *context, UniqueValue<Value> value)
+  ImmutableMemory(MemoryContext *context, Value *value)
       : Memory(context, MemoryKind::Immutable), value(std::move(value)) {}
 
 public:
-  ~ImmutableMemory();
   static bool classof(const Memory *mem) {
     return mem->getKind() == MemoryKind::Immutable;
   }
 
-  Value *view() const { return value.get(); }
+  Value *get() const { return value; }
 
-  static ImmutableMemory *create(MemoryContext *context,
-                                 UniqueValue<Value> value);
+  static ImmutableMemory *create(MemoryContext *context, Value *value);
 
 private:
-  UniqueValue<Value> value;
+  Value *value;
 };
 
 class ValueMemory final : public Memory {
-  ValueMemory(MemoryContext *context, UniqueValue<Value> value)
+  ValueMemory(MemoryContext *context, Value *value)
       : Memory(context, MemoryKind::Value), value(std::move(value)) {}
 
 public:
-  ~ValueMemory();
-
   static bool classof(const Memory *mem) {
     return mem->getKind() == MemoryKind::Value;
   }
 
-  Value *view() const { return value.get(); }
-  void assign(UniqueValue<Value> value) { this->value = std::move(value); }
+  Value *get() const { return value; }
+  void assign(Value *value) { this->value = value; }
 
-  static ValueMemory *create(MemoryContext *context, UniqueValue<Value> value);
+  static ValueMemory *create(MemoryContext *context, Value *value);
 
 private:
-  UniqueValue<Value> value;
+  Value *value;
 };
 
 class TupleMemory final : public Memory,
@@ -141,30 +139,31 @@ private:
   size_t size;
 };
 
-class VectorMemory final : public Memory {
-  VectorMemory(MemoryContext *context, ArrayRef<ValueMemory *> mems)
-      : Memory(context, MemoryKind::Vector), mems(mems) {}
+class VectorMemory final : public Memory,
+                           public TrailingObjects<VectorMemory, ValueMemory *> {
+  VectorMemory(MemoryContext *context, size_t capacity)
+      : Memory(context, MemoryKind::Vector), capacity(capacity) {}
 
 public:
   static VectorMemory *create(MemoryContext *context,
-                              ArrayRef<ValueMemory *> mems);
+                              ArrayRef<ValueMemory *> values, size_t capacity);
 
   static bool classof(const Memory *mem) {
     return mem->getKind() == MemoryKind::Vector;
   }
 
-  ValueMemory *get(size_t index) const { return mems[index]; }
-  size_t size() const { return mems.size(); }
-  bool empty() const { return mems.empty(); }
-  auto begin() const { return mems.begin(); }
-  auto end() const { return mems.end(); }
+  ValueMemory *get(size_t index) const {
+    assert(index < capacity && "index out of bounds");
+    return getTrailingObjects<ValueMemory *>()[index];
+  }
 
-  void reserve(size_t size) { mems.reserve(size); }
-  void push(ValueMemory *mem) { mems.emplace_back(mem); }
-  void pop() { mems.pop_back(); }
+  ArrayRef<ValueMemory *> getMemories() const {
+    return {getTrailingObjects<ValueMemory *>(), capacity};
+  }
+  size_t getCapacity() const { return capacity; }
 
 private:
-  vector<ValueMemory *> mems;
+  size_t capacity;
 };
 
 } // namespace bara

@@ -14,27 +14,30 @@ void interpret(const Program *program, MemoryContext *context,
 }
 
 StmtInterpreter::StmtInterpreter(MemoryContext *context, Diagnostic &diag)
-    : context(context), diag(diag), env(context->getBuiltinFuncTable()),
-      rvInterpreter(new RvExprInterpreter(this)),
-      lvInterpreter(new LvExprInterpreter(this)) {}
+    : context(context), diag(diag), rvInterpreter(new RvExprInterpreter(this)),
+      lvInterpreter(new LvExprInterpreter(this)) {
+  context->getGC()->setInterpreter(this);
+  stack.emplace_back(
+      std::make_unique<Environment>(context->getBuiltinFuncTable()));
+}
 
 StmtInterpreter::~StmtInterpreter() {
   delete rvInterpreter;
   delete lvInterpreter;
 }
 
-Memory *StmtInterpreter::lvInterpret(const Expression &ast) {
+GC::RootRegister StmtInterpreter::lvInterpret(const Expression &ast) {
   ast.accept(*lvInterpreter);
   return lvInterpreter->getResult();
 }
 
-UniqueValue<Value> StmtInterpreter::rvInterpret(const Expression &ast) {
+GC::RootRegister StmtInterpreter::rvInterpret(const Expression &ast) {
   ast.accept(*rvInterpreter);
   return rvInterpreter->getResult();
 }
 
 void StmtInterpreter::visit(const Program &stmt) {
-  Environment::Scope scope(env);
+  Environment::Scope scope(getCurrEnv());
 
   for (const auto &decl : stmt.getStmts()) {
     decl->accept(*this);
@@ -61,7 +64,7 @@ void StmtInterpreter::visit(const Program &stmt) {
 }
 
 void StmtInterpreter::visit(const CompoundStatement &stmt) {
-  Environment::Scope scope(env);
+  Environment::Scope scope(getCurrEnv());
   for (const auto &decl : stmt.getStmts()) {
     decl->accept(*this);
     if (isTerminated())
@@ -74,14 +77,14 @@ void StmtInterpreter::visit(const ExpressionStatement &stmt) {
 }
 
 void StmtInterpreter::visit(const IfStatement &stmt) {
-  auto condV = rvInterpret(*stmt.getCond());
+  auto condR = rvInterpret(*stmt.getCond());
   if (isTerminated())
     return;
-  auto condOpt = condV->toBool();
+  auto condOpt = condR.getValue()->toBool();
   if (!condOpt) {
     report(stmt.getCond()->getRange(),
            InterpretDiagnostic::error_invalid_to_conver_boolean,
-           condV->toString());
+           condR.getValue()->toString());
     return;
   }
 
@@ -92,7 +95,7 @@ void StmtInterpreter::visit(const IfStatement &stmt) {
 }
 
 void StmtInterpreter::visit(const WhileStatement &stmt) {
-  Environment::Scope scope(env);
+  Environment::Scope scope(getCurrEnv());
   if (stmt.isDoWhile()) {
     bool cond;
     do {
@@ -109,14 +112,14 @@ void StmtInterpreter::visit(const WhileStatement &stmt) {
         return;
       }
 
-      auto condV = rvInterpret(*stmt.getCond());
+      auto condR = rvInterpret(*stmt.getCond());
       if (isTerminated())
         return;
-      auto condOpt = condV->toBool();
+      auto condOpt = condR.getValue()->toBool();
       if (!condOpt) {
         report(stmt.getCond()->getRange(),
                InterpretDiagnostic::error_invalid_to_conver_boolean,
-               condV->toString());
+               condR.getValue()->toString());
         return;
       }
 
@@ -128,11 +131,11 @@ void StmtInterpreter::visit(const WhileStatement &stmt) {
       auto condV = rvInterpret(*stmt.getCond());
       if (isTerminated())
         return;
-      auto condOpt = condV->toBool();
+      auto condOpt = condV.getValue()->toBool();
       if (!condOpt) {
         report(stmt.getCond()->getRange(),
                InterpretDiagnostic::error_invalid_to_conver_boolean,
-               condV->toString());
+               condV.getValue()->toString());
         return;
       }
 
@@ -156,7 +159,7 @@ void StmtInterpreter::visit(const WhileStatement &stmt) {
 }
 
 void StmtInterpreter::visit(const ForStatement &stmt) {
-  Environment::Scope scope(env);
+  Environment::Scope scope(getCurrEnv());
   auto declOpt = stmt.getDecl();
 
   if (declOpt) {
@@ -169,20 +172,20 @@ void StmtInterpreter::visit(const ForStatement &stmt) {
   auto stepOpt = stmt.getStep();
   while (true) {
     if (condOpt) {
-      auto condV = rvInterpret(**condOpt);
+      auto condR = rvInterpret(**condOpt);
       if (isTerminated())
         return;
-      auto condBool = condV->toBool();
+      auto condBool = condR.getValue()->toBool();
       if (!condBool) {
         report((*condOpt)->getRange(),
                InterpretDiagnostic::error_invalid_to_conver_boolean,
-               condV->toString());
+               condR.getValue()->toString());
         return;
       }
       if (!*condBool)
         break;
     }
-    Environment::Scope bodyScope(env);
+    Environment::Scope bodyScope(getCurrEnv());
     stmt.getBody()->accept(*this);
     if (diag.hasError())
       return;
@@ -192,7 +195,7 @@ void StmtInterpreter::visit(const ForStatement &stmt) {
     } else if (breakFlag) {
       breakFlag = nullptr;
       break;
-    } else if (returnValue) {
+    } else if (returnFlag) {
       return;
     }
 
@@ -217,7 +220,7 @@ void StmtInterpreter::visit(const ContinueStatement &stmt) {
 void StmtInterpreter::visit(const ReturnStatement &stmt) {
   assert(!isTerminated() && "Already terminated");
   if (stmt.getExpr()) {
-    returnValue = rvInterpret(**stmt.getExpr());
+    returnValue = rvInterpret(**stmt.getExpr()).getValue();
     if (isTerminated())
       return;
   }
@@ -226,12 +229,12 @@ void StmtInterpreter::visit(const ReturnStatement &stmt) {
 
 void StmtInterpreter::visit(const DeclarationStatement &stmt) {
   if (stmt.getInit()) {
-    auto initV = rvInterpret(**stmt.getInit());
+    auto initR = rvInterpret(**stmt.getInit());
     if (isTerminated())
       return;
-    if (!matchPattern(*stmt.getPattern(), initV.get())) {
+    if (!matchPattern(*stmt.getPattern(), initR.getValue())) {
       report(stmt.getRange(), InterpretDiagnostic::error_match_pattern_fail,
-             stmt.getPattern()->toString(), initV->toString());
+             stmt.getPattern()->toString(), initR.getValue()->toString());
       return;
     }
   } else
@@ -239,71 +242,90 @@ void StmtInterpreter::visit(const DeclarationStatement &stmt) {
 }
 
 void StmtInterpreter::visit(const AssignmentStatement &stmt) {
-  auto *lv = lvInterpret(*stmt.getLhs());
+  auto lR = lvInterpret(*stmt.getLhs());
   if (isTerminated())
     return;
 
-  auto value = rvInterpret(*stmt.getRhs());
+  auto rR = rvInterpret(*stmt.getRhs());
   if (isTerminated())
     return;
 
-  if (!lv->assign(value.get())) {
+  if (!lR.getMemory()->assign(rR.getValue())) {
     report(stmt.getRange(), InterpretDiagnostic::error_assignment_fail,
-           stmt.getLhs()->toString(), value->toString());
+           stmt.getLhs()->toString(), rR.getValue()->toString());
   }
 }
 
 void StmtInterpreter::visit(const OperatorAssignmentStatement &stmt) {
-  auto *lv = lvInterpret(*stmt.getLhs());
+  auto lR = lvInterpret(*stmt.getLhs());
   if (isTerminated())
     return;
-  if (!lv->isa<ValueMemory>()) {
+  if (!lR.getMemory()->isa<ValueMemory>()) {
     report(stmt.getLhs()->getRange(),
            InterpretDiagnostic::error_invalid_left_size_of_operator_assignment,
            operatorToString(stmt.getOperator()));
     return;
   }
 
-  auto *valueMemory = lv->cast<ValueMemory>();
-  auto lhsV = valueMemory->view();
+  auto *valueMemory = lR.getMemory()->cast<ValueMemory>();
+  auto lhsV = valueMemory->get();
 
-  auto rhsV = rvInterpret(*stmt.getRhs());
+  auto rhsR = rvInterpret(*stmt.getRhs());
   if (isTerminated())
     return;
+  auto rhsV = rhsR.getValue();
 
-  auto result = rvInterpreter->binaryOp(stmt.getRange(), lhsV, rhsV.get(),
-                                        stmt.getOperator());
+  auto result =
+      rvInterpreter->binaryOp(stmt.getRange(), lhsV, rhsV, stmt.getOperator());
   if (isTerminated())
     return;
+  if (!result) {
+    report(stmt.getRange(),
+           InterpretDiagnostic::error_invalid_operand_for_binary_operator,
+           operatorToString(stmt.getOperator()), lhsV->toString(),
+           rhsV->toString());
+    return;
+  }
 
-  valueMemory->assign(std::move(result));
+  valueMemory->assign(result->getValue());
 }
 
 void StmtInterpreter::visit(const FunctionDeclaration &stmt) {
-  auto functionV = FunctionValue::create(env, &stmt);
+  GC::RootRegister functionR;
+  FunctionValue *functionV;
+  GCSAFE(context->getGC()) {
+    functionV = FunctionValue::create(context, getCurrEnv(), &stmt);
+    functionR = context->getGC()->registerRoot(functionV);
+  }
   auto functionName = stmt.getName();
 
-  if (env.isDefinedCurrScope(functionName)) {
+  if (getCurrEnv().isDefinedCurrScope(functionName)) {
     report(stmt.getRange(), InterpretDiagnostic::error_redefinition_in_scope,
            functionName);
     return;
   }
 
-  auto *newMem = ImmutableMemory::create(context, std::move(functionV));
-  env.insert(functionName, newMem);
+  GCSAFE(context->getGC()) {
+    Memory *newMem = ImmutableMemory::create(context, std::move(functionV));
+    getCurrEnv().insert(functionName, newMem);
+  }
 }
 
 void StmtInterpreter::patternDeclaration(const Pattern &pattern) {
   llvm::TypeSwitch<const Pattern *>(&pattern)
       .Case([&](const IdentifierPattern *pattern) {
         auto ident = pattern->getName();
-        if (env.isDefinedCurrScope(ident)) {
+        if (getCurrEnv().isDefinedCurrScope(ident)) {
           report(pattern->getRange(),
                  InterpretDiagnostic::error_redefinition_in_scope, ident);
           return false;
         }
-        auto *newMem = ValueMemory::create(context, NilValue::create());
-        env.insert(ident, newMem);
+
+        GCSAFE(context->getGC()) {
+          auto *newMem =
+              ValueMemory::create(context, NilValue::create(context));
+          getCurrEnv().insert(ident, newMem);
+        }
         return true;
       })
       .Case([&](const TuplePattern *pattern) {
@@ -325,13 +347,15 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
   return llvm::TypeSwitch<const Pattern *, bool>(&pattern)
       .Case([&](const IdentifierPattern *pattern) {
         auto ident = pattern->getName();
-        if (env.isDefinedCurrScope(ident)) {
+        if (getCurrEnv().isDefinedCurrScope(ident)) {
           report(pattern->getRange(),
                  InterpretDiagnostic::error_redefinition_in_scope, ident);
           return false;
         }
-        auto *newMem = ValueMemory::create(context, value->clone());
-        env.insert(ident, newMem);
+        GCSAFE(context->getGC()) {
+          auto *newMem = ValueMemory::create(context, value);
+          getCurrEnv().insert(ident, newMem);
+        }
         return true;
       })
       .Case([&](const TuplePattern *pattern) {
@@ -345,7 +369,7 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
           return false;
 
         for (auto [pattern, element] : llvm::zip(patterns, elements)) {
-          if (!matchPattern(*pattern, element.get()))
+          if (!matchPattern(*pattern, element))
             return false;
         }
         return true;

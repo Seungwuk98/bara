@@ -27,6 +27,9 @@ llvm::cl::opt<Action>
            llvm::cl::values(clEnumValN(ASTPrint, "ast-print", "Print AST"),
                             clEnumValN(Interpret, "interpret", "Interpret")));
 
+llvm::cl::opt<size_t> gcThreshold("gc-threshold",
+                                  llvm::cl::desc("GC initial threshold(KB)"));
+
 } // namespace bara::cl
 
 namespace bara {
@@ -74,13 +77,15 @@ int baraMain() {
   if (diag.hasError())
     return 1;
 
-  if (bara::cl::action == cl::ASTPrint) {
+  if (cl::action == cl::ASTPrint) {
     dump([program](raw_ostream &os) { os << program->toString(); });
     return 0;
   }
 
-  if (bara::cl::action == cl::Interpret) {
+  if (cl::action == cl::Interpret) {
     MemoryContext memoryContext;
+    if (cl::gcThreshold.getNumOccurrences())
+      memoryContext.setGCThreshold(cl::gcThreshold * 1024);
     interpret(program, &memoryContext, diag);
     return diag.hasError();
   }

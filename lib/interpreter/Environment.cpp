@@ -1,4 +1,5 @@
 #include "bara/interpreter/Environment.h"
+#include "bara/context/GarbageCollector.h"
 #include "bara/interpreter/Memory.h"
 #include "bara/interpreter/Value.h"
 
@@ -27,25 +28,40 @@ void Environment::insert(StringRef name, Memory *memory) {
   scopes.back().try_emplace(name, memory);
 }
 
-Environment Environment::capture(MemoryContext *context) const {
-  Environment env(builtinFuncTable);
+SmallVector<pair<StringRef, Memory *>>
+Environment::capture(MemoryContext *context) const {
+  assert(context->getGC()->isLocked() && "GC must be locked");
   DenseMap<StringRef, Memory *> captureScope;
   for (const auto &scope : scopes)
     for (const auto &[name, memory] : scope)
       captureScope[name] = memory;
 
+  SmallVector<pair<StringRef, Memory *>> result;
+  result.reserve(captureScope.size());
   for (auto &[name, memory] : captureScope) {
     Memory *newMemory;
     if (auto *immut = memory->dyn_cast<ImmutableMemory>())
-      newMemory = ImmutableMemory::create(context, immut->view()->clone());
+      newMemory = ImmutableMemory::create(context, immut->get());
     else
-      newMemory = ValueMemory::create(
-          context, memory->cast<ValueMemory>()->view()->clone());
-    memory = newMemory;
+      newMemory =
+          ValueMemory::create(context, memory->cast<ValueMemory>()->get());
+    result.emplace_back(name, newMemory);
   }
 
-  env.scopes.emplace_back(std::move(captureScope));
-  return env;
+  return result;
+}
+
+SmallVector<pair<StringRef, Memory *>> Environment::shallowCopy() const {
+  DenseMap<StringRef, Memory *> shallowScope;
+  for (const auto &scope : scopes)
+    for (const auto &[name, memory] : scope)
+      shallowScope[name] = memory;
+
+  SmallVector<pair<StringRef, Memory *>> result;
+  result.reserve(shallowScope.size());
+  for (auto &[name, memory] : shallowScope)
+    result.emplace_back(name, memory);
+  return result;
 }
 
 void Environment::dump() const {
@@ -54,9 +70,9 @@ void Environment::dump() const {
     for (const auto &[name, memory] : scope) {
       llvm::errs() << " " << name << " -> ";
       if (auto valueM = memory->dyn_cast<ValueMemory>())
-        errs() << valueM->view()->toString();
+        errs() << valueM->get()->toString();
       else
-        errs() << memory->cast<ImmutableMemory>()->view()->toString();
+        errs() << memory->cast<ImmutableMemory>()->get()->toString();
     }
     errs() << "}\n";
   }

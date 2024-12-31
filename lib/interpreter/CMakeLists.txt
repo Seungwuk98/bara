@@ -4,7 +4,6 @@ add_library(
   StmtInterpreter.cpp 
   Memory.cpp
   Value.cpp
-  ValueDeleter.cpp
   RvInterpreter.cpp
   LvInterpreter.cpp
   BinaryOperations.cpp

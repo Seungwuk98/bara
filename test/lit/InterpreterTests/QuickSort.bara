@@ -6,11 +6,10 @@
 fn quickSort(list) {
   if len(list) == 1 {
     return [list[0]];
-  } else {
-    if len(list) == 0 {
-      return [];
-    }
-  } 
+  } else if len(list) == 0 {
+    return [];
+  }
+  
   var pivot = list[0];
   var (left, right) = ([], []);
 
@@ -22,7 +21,8 @@ fn quickSort(list) {
     }
   }
 
-  return quickSort(left) + [pivot] + quickSort(right);
+  var ret = quickSort(left) + [pivot] + quickSort(right);
+  return ret;
 }
 
 

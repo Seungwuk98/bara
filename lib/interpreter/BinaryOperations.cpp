@@ -1,12 +1,13 @@
+#include "bara/context/GarbageCollector.h"
 #include "bara/interpreter/Value.h"
 #include "bara/utils/LLVM.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include <llvm-18/llvm/ADT/APFloat.h>
 
 namespace bara {
 
 namespace {
-static UniqueValue<Value> null(const Value *) { return nullptr; }
+static Value *null(const Value *) { return nullptr; }
 } // namespace
 
 template <typename ConcreteVisitor>
@@ -14,14 +15,14 @@ class BinaryOpVisitorImpl : public ConstValueVisitorBase<ConcreteVisitor> {
 public:
   BinaryOpVisitorImpl(const Value *r) : r(r), result(nullptr) {}
 
-  UniqueValue<Value> getResult() { return std::move(result); }
+  Value *getResult() { return std::move(result); }
 
 protected:
   const Value *r;
-  UniqueValue<Value> result;
+  Value *result;
 };
 
-using ValueSwitch = llvm::TypeSwitch<const Value *, UniqueValue<Value>>;
+using ValueSwitch = llvm::TypeSwitch<const Value *, Value *>;
 
 class AddVisitor : public BinaryOpVisitorImpl<AddVisitor> {
 public:
@@ -30,41 +31,40 @@ public:
 };
 
 namespace {
-static UniqueValue<Value> add(const IntegerValue *l, const IntegerValue *r) {
+static Value *add(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() + r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> add(const IntegerValue *l, const BoolValue *r) {
+static Value *add(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() + r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> add(const BoolValue *l, const BoolValue *r) {
+static Value *add(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() + r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> add(const IntegerValue *l, const FloatValue *r) {
+static Value *add(const IntegerValue *l, const FloatValue *r) {
   auto apFloat = r->getValue();
   auto newValue =
       apFloat + llvm::APFloat(llvm::APFloat::IEEEdouble(), l->getValue());
-  return FloatValue::create(newValue);
+  return FloatValue::create(l->getContext(), newValue);
 }
-static UniqueValue<Value> add(const FloatValue *l, const FloatValue *r) {
+static Value *add(const FloatValue *l, const FloatValue *r) {
   auto value = l->getValue() + r->getValue();
-  return FloatValue::create(value);
+  return FloatValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> add(const StringValue *l, const StringValue *r) {
+static Value *add(const StringValue *l, const StringValue *r) {
   auto value = l->getValue() + r->getValue();
-  return StringValue::create(value.str());
+  return StringValue::create(l->getContext(), value.str());
 }
-static UniqueValue<Value> add(const ListValue *l, const ListValue *r) {
-  auto *context = l->getVectorMemory()->getContext();
-  assert(context == r->getVectorMemory()->getContext());
-  vector<UniqueValue<Value>> newValues;
+static Value *add(const ListValue *l, const ListValue *r) {
+  auto *context = l->getContext();
+  vector<Value *> newValues;
   newValues.reserve(l->size() + r->size());
   for (auto idx = 0; idx < l->size(); ++idx)
-    newValues.emplace_back(l->getElement(idx)->view()->clone());
+    newValues.emplace_back(l->get(idx)->get());
   for (auto idx = 0; idx < r->size(); ++idx)
-    newValues.emplace_back(r->getElement(idx)->view()->clone());
+    newValues.emplace_back(r->get(idx)->get());
   return ListValue::create(context, newValues);
 }
 
@@ -115,42 +115,46 @@ public:
 };
 
 void SubVisitor::visit(const IntegerValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto value = l.getValue() - r->getValue();
-                 return IntegerValue::create(value);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
-                 return FloatValue::create(floatL - r->getValue());
-               })
-               .Case([&](const BoolValue *r) {
-                 return IntegerValue::create(l.getValue() - r->getValue());
-               })
-               .Default(null);
+  result =
+      ValueSwitch(r)
+          .Case([&](const IntegerValue *r) {
+            auto value = l.getValue() - r->getValue();
+            return IntegerValue::create(l.getContext(), value);
+          })
+          .Case([&](const FloatValue *r) {
+            auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
+            return FloatValue::create(l.getContext(), floatL - r->getValue());
+          })
+          .Case([&](const BoolValue *r) {
+            return IntegerValue::create(l.getContext(),
+                                        l.getValue() - r->getValue());
+          })
+          .Default(null);
 }
 void SubVisitor::visit(const BoolValue &l) {
   result = ValueSwitch(r)
                .Case([&](const IntegerValue *r) {
                  auto value = l.getValue() - r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Case([&](const BoolValue *r) {
-                 return IntegerValue::create(l.getValue() - r->getValue());
+                 return IntegerValue::create(l.getContext(),
+                                             l.getValue() - r->getValue());
                })
                .Default(null);
 }
 void SubVisitor::visit(const FloatValue &l) {
-  result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) {
-                 auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
-                 return FloatValue::create(l.getValue() - floatR);
-               })
-               .Case([&](const FloatValue *r) {
-                 auto value = l.getValue() - r->getValue();
-                 return FloatValue::create(value);
-               })
-               .Default(null);
+  result =
+      ValueSwitch(r)
+          .Case([&](const IntegerValue *r) {
+            auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
+            return FloatValue::create(l.getContext(), l.getValue() - floatR);
+          })
+          .Case([&](const FloatValue *r) {
+            auto value = l.getValue() - r->getValue();
+            return FloatValue::create(l.getContext(), value);
+          })
+          .Default(null);
 }
 void SubVisitor::visit(const StringValue &l) { result = nullptr; }
 void SubVisitor::visit(const ListValue &l) { result = nullptr; }
@@ -167,43 +171,43 @@ public:
 };
 
 namespace {
-static UniqueValue<Value> mul(const IntegerValue *l, const IntegerValue *r) {
+static Value *mul(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() * r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> mul(const IntegerValue *l, const FloatValue *r) {
+static Value *mul(const IntegerValue *l, const FloatValue *r) {
   auto floatL = APFloat(APFloat::IEEEdouble(), l->getValue());
-  return FloatValue::create(floatL * r->getValue());
+  return FloatValue::create(l->getContext(), floatL * r->getValue());
 }
-static UniqueValue<Value> mul(const FloatValue *l, const FloatValue *r) {
+static Value *mul(const FloatValue *l, const FloatValue *r) {
   auto value = l->getValue() * r->getValue();
-  return FloatValue::create(value);
+  return FloatValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> mul(const IntegerValue *l, const BoolValue *r) {
+static Value *mul(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() * r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> mul(const BoolValue *l, const BoolValue *r) {
+static Value *mul(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() * r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> mul(const IntegerValue *l, const ListValue *r) {
+static Value *mul(const IntegerValue *l, const ListValue *r) {
   if (l->getValue() < 0)
     return nullptr;
-  auto context = r->getVectorMemory()->getContext();
-  vector<UniqueValue<Value>> newValues;
+  auto context = r->getContext();
+  vector<Value *> newValues;
   auto newSize = l->getValue() * r->size();
   newValues.reserve(newSize);
 
   for (auto cnt = 0; cnt < l->getValue(); ++cnt) {
     for (auto idx = 0; idx < r->size(); ++idx) {
-      newValues.emplace_back(r->getElement(idx)->view()->clone());
+      newValues.emplace_back(r->get(idx)->get());
     }
   }
 
   return ListValue::create(context, newValues);
 }
-static UniqueValue<Value> mul(const IntegerValue *l, const StringValue *r) {
+static Value *mul(const IntegerValue *l, const StringValue *r) {
   if (l->getValue() < 0)
     return nullptr;
   string newStr;
@@ -212,7 +216,7 @@ static UniqueValue<Value> mul(const IntegerValue *l, const StringValue *r) {
 
   for (auto cnt = 0; cnt < l->getValue(); ++cnt)
     os << r->getValue();
-  return StringValue::create(os.str());
+  return StringValue::create(l->getContext(), os.str());
 }
 } // namespace
 
@@ -263,16 +267,16 @@ public:
 
 void DivVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
+               .Case([&](const IntegerValue *r) -> Value * {
                  if (r->getValue() == 0)
                    return nullptr;
                  auto value = l.getValue() / r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Case([&](const FloatValue *r) {
                  auto floatL = APFloat(APFloat::IEEEdouble(), l.getValue());
                  auto value = floatL / r->getValue();
-                 return FloatValue::create(value);
+                 return FloatValue::create(l.getContext(), value);
                })
                .Default(null);
 }
@@ -282,11 +286,11 @@ void DivVisitor::visit(const FloatValue &l) {
                .Case([&](const IntegerValue *r) {
                  auto floatR = APFloat(APFloat::IEEEdouble(), r->getValue());
                  auto value = l.getValue() / floatR;
-                 return FloatValue::create(value);
+                 return FloatValue::create(l.getContext(), value);
                })
                .Case([&](const FloatValue *r) {
                  auto value = l.getValue() / r->getValue();
-                 return FloatValue::create(value);
+                 return FloatValue::create(l.getContext(), value);
                })
                .Default(null);
 }
@@ -309,7 +313,7 @@ void ModVisitor::visit(const IntegerValue &l) {
     if (intR->getValue() == 0)
       result = nullptr;
     auto value = l.getValue() % intR->getValue();
-    result = IntegerValue::create(value);
+    result = IntegerValue::create(l.getContext(), value);
   } else
     result = nullptr;
 }
@@ -410,8 +414,8 @@ void Comparator::visit(const ListValue &l) {
     auto size = std::min(lsize, rsize);
 
     for (auto idx = 0; idx < size; ++idx) {
-      Comparator cmp(listR->getElement(idx)->view());
-      l.getElement(idx)->view()->accept(cmp);
+      Comparator cmp(listR->get(idx)->get());
+      l.get(idx)->get()->accept(cmp);
       if (cmp.hasError()) {
         err = true;
         return;
@@ -461,17 +465,17 @@ public:
 };
 
 namespace {
-static UniqueValue<Value> bitAnd(const IntegerValue *l, const IntegerValue *r) {
+static Value *bitAnd(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() & r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> bitAnd(const IntegerValue *l, const BoolValue *r) {
+static Value *bitAnd(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() & r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> bitAnd(const BoolValue *l, const BoolValue *r) {
+static Value *bitAnd(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() & r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
 } // namespace
 void BitAndVisitor::visit(const IntegerValue &l) {
@@ -501,17 +505,17 @@ public:
 #include "bara/interpreter/Value.def"
 };
 namespace {
-static UniqueValue<Value> bitOr(const IntegerValue *l, const IntegerValue *r) {
+static Value *bitOr(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() | r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> bitOr(const IntegerValue *l, const BoolValue *r) {
+static Value *bitOr(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() | r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> bitOr(const BoolValue *l, const BoolValue *r) {
+static Value *bitOr(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() | r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
 } // namespace
 
@@ -542,17 +546,17 @@ public:
 #include "bara/interpreter/Value.def"
 };
 namespace {
-static UniqueValue<Value> bitXor(const IntegerValue *l, const IntegerValue *r) {
+static Value *bitXor(const IntegerValue *l, const IntegerValue *r) {
   auto value = l->getValue() ^ r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> bitXor(const IntegerValue *l, const BoolValue *r) {
+static Value *bitXor(const IntegerValue *l, const BoolValue *r) {
   auto value = l->getValue() ^ r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
-static UniqueValue<Value> bitXor(const BoolValue *l, const BoolValue *r) {
+static Value *bitXor(const BoolValue *l, const BoolValue *r) {
   auto value = l->getValue() ^ r->getValue();
-  return IntegerValue::create(value);
+  return IntegerValue::create(l->getContext(), value);
 }
 
 } // namespace
@@ -584,29 +588,29 @@ public:
 };
 void ShlVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
+               .Case([&](const IntegerValue *r) -> Value * {
                  if (r->getValue() < 0)
                    return nullptr;
                  auto value = l.getValue() << r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Case([&](const BoolValue *r) {
                  auto value = l.getValue() << r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Default(null);
 }
 void ShlVisitor::visit(const BoolValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
+               .Case([&](const IntegerValue *r) -> Value * {
                  if (r->getValue() < 0)
                    return nullptr;
                  auto value = l.getValue() << r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Case([&](const BoolValue *r) {
                  auto value = l.getValue() << r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Default(null);
 }
@@ -626,29 +630,29 @@ public:
 };
 void ShrVisitor::visit(const IntegerValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
+               .Case([&](const IntegerValue *r) -> Value * {
                  if (r->getValue() < 0)
                    return nullptr;
                  auto value = l.getValue() >> r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Case([&](const BoolValue *r) {
                  auto value = l.getValue() >> r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Default(null);
 }
 void ShrVisitor::visit(const BoolValue &l) {
   result = ValueSwitch(r)
-               .Case([&](const IntegerValue *r) -> UniqueValue<Value> {
+               .Case([&](const IntegerValue *r) -> Value * {
                  if (r->getValue() < 0)
                    return nullptr;
                  auto value = l.getValue() >> r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Case([&](const BoolValue *r) {
                  auto value = l.getValue() >> r->getValue();
-                 return IntegerValue::create(value);
+                 return IntegerValue::create(l.getContext(), value);
                })
                .Default(null);
 }
@@ -663,7 +667,7 @@ void ShrVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
 
 namespace BinaryOp {
 #define BINARY_FUNC(funcName, VisitorName)                                     \
-  UniqueValue<Value> funcName(const Value *l, const Value *r) {                \
+  Value *funcName(const Value *l, const Value *r) {                            \
     VisitorName visitor(r);                                                    \
     l->accept(visitor);                                                        \
     return visitor.getResult();                                                \
@@ -682,15 +686,15 @@ BINARY_FUNC(shr, ShrVisitor)
 #undef BINARY_FUNC
 
 #define COMPARE_FUNC(funcName, op)                                             \
-  UniqueValue<Value> funcName(const Value *l, const Value *r) {                \
+  Value *funcName(const Value *l, const Value *r) {                            \
     Comparator cmp(r);                                                         \
-    l->accept(cmp);                                                            \
+    GCSAFE(l->getContext()->getGC()) { l->accept(cmp); }                       \
     if (cmp.hasError())                                                        \
       return nullptr;                                                          \
     auto result = cmp.getResult();                                             \
     if (!result)                                                               \
-      return BoolValue::create(false);                                         \
-    return BoolValue::create(*result op 0);                                    \
+      return BoolValue::create(l->getContext(), false);                        \
+    return BoolValue::create(l->getContext(), *result op 0);                   \
   }
 
 COMPARE_FUNC(gt, >)

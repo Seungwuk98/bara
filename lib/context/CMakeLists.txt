@@ -3,6 +3,7 @@ add_library(
   STATIC
   ASTContext.cpp
   MemoryContext.cpp
+  GarbageCollector.cpp
 )
 
 

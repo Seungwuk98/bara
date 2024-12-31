@@ -1,45 +1,51 @@
 #include "bara/ast/AST.h"
+#include "bara/context/GarbageCollector.h"
 #include "bara/interpreter/ExprInterpreter.h"
 #include "bara/interpreter/Memory.h"
 #include "bara/interpreter/StmtInterpreter.h"
 #include "bara/interpreter/Value.h"
+#include "llvm/ADT/SmallVectorExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include <limits>
-#include <llvm-18/llvm/ADT/TypeSwitch.h>
 #include <variant>
 
 namespace bara {
 
 namespace BinaryOp {
-extern UniqueValue<Value> add(const Value *l, const Value *r);
-extern UniqueValue<Value> sub(const Value *l, const Value *r);
-extern UniqueValue<Value> mul(const Value *l, const Value *r);
-extern UniqueValue<Value> div(const Value *l, const Value *r);
-extern UniqueValue<Value> mod(const Value *l, const Value *r);
-extern UniqueValue<Value> eq(const Value *l, const Value *r);
-extern UniqueValue<Value> ne(const Value *l, const Value *r);
-extern UniqueValue<Value> lt(const Value *l, const Value *r);
-extern UniqueValue<Value> le(const Value *l, const Value *r);
-extern UniqueValue<Value> gt(const Value *l, const Value *r);
-extern UniqueValue<Value> ge(const Value *l, const Value *r);
-extern UniqueValue<Value> logicalAnd(const Value *l, const Value *r);
-extern UniqueValue<Value> logicalOr(const Value *l, const Value *r);
-extern UniqueValue<Value> bitAnd(const Value *l, const Value *r);
-extern UniqueValue<Value> bitOr(const Value *l, const Value *r);
-extern UniqueValue<Value> bitXor(const Value *l, const Value *r);
-extern UniqueValue<Value> shl(const Value *l, const Value *r);
-extern UniqueValue<Value> shr(const Value *l, const Value *r);
+extern Value *add(const Value *l, const Value *r);
+extern Value *sub(const Value *l, const Value *r);
+extern Value *mul(const Value *l, const Value *r);
+extern Value *div(const Value *l, const Value *r);
+extern Value *mod(const Value *l, const Value *r);
+extern Value *eq(const Value *l, const Value *r);
+extern Value *ne(const Value *l, const Value *r);
+extern Value *lt(const Value *l, const Value *r);
+extern Value *le(const Value *l, const Value *r);
+extern Value *gt(const Value *l, const Value *r);
+extern Value *ge(const Value *l, const Value *r);
+extern Value *logicalAnd(const Value *l, const Value *r);
+extern Value *logicalOr(const Value *l, const Value *r);
+extern Value *bitAnd(const Value *l, const Value *r);
+extern Value *bitOr(const Value *l, const Value *r);
+extern Value *bitXor(const Value *l, const Value *r);
+extern Value *shl(const Value *l, const Value *r);
+extern Value *shr(const Value *l, const Value *r);
 
 } // namespace BinaryOp
 
-UniqueValue<Value> RvExprInterpreter::binaryOp(SMRange range, const Value *l,
-                                               const Value *r, Operator op) {
+optional<GC::RootRegister> RvExprInterpreter::binaryOp(SMRange range,
+                                                       const Value *l,
+                                                       const Value *r,
+                                                       Operator op) {
   switch (op) {
 #define BINARY_OP(op, func)                                                    \
   case Operator::op: {                                                         \
-    auto result = BinaryOp::func(l, r);                                        \
-    if (result)                                                                \
-      return result;                                                           \
-    break;                                                                     \
+    GCSAFE(context->getGC()) {                                                 \
+      auto result = BinaryOp::func(l, r);                                      \
+      if (result)                                                              \
+        return context->getGC()->registerRoot(result);                         \
+      break;                                                                   \
+    }                                                                          \
   }
     BINARY_OP(Plus, add)
     BINARY_OP(Minus, sub)
@@ -60,7 +66,7 @@ UniqueValue<Value> RvExprInterpreter::binaryOp(SMRange range, const Value *l,
   default:
     llvm_unreachable("never used for binary operation");
   }
-  return nullptr;
+  return nullopt;
 }
 
 string evalStringLiteral(StringRef buffer) {
@@ -114,41 +120,50 @@ void RvExprInterpreter::visit(const IdentifierExpression &expr) {
     return;
 
   if (auto *valueMemory = memory->dyn_cast<ValueMemory>())
-    result = valueMemory->view()->clone();
+    result = context->getGC()->registerRoot(valueMemory->get());
   else {
     auto immutMemory = memory->cast<ImmutableMemory>();
-    result = immutMemory->view()->clone();
+    result = context->getGC()->registerRoot(immutMemory->get());
   }
 }
 
 void RvExprInterpreter::visit(const IndexExpression &expr) {
-  auto memoryOrValue = interpretIndex(&expr);
+  auto memoryOrValueOrChar = interpretIndex(&expr);
   if (diag.hasError())
     return;
 
-  if (std::holds_alternative<char>(memoryOrValue)) {
-    result = StringValue::create({&std::get<char>(memoryOrValue), 1});
+  if (std::holds_alternative<char>(memoryOrValueOrChar)) {
+    GCSAFE(context->getGC()) {
+      auto strValue = StringValue::create(
+          context, {&std::get<char>(memoryOrValueOrChar), 1});
+      result = context->getGC()->registerRoot(strValue);
+    }
     return;
   }
 
-  if (std::holds_alternative<UniqueValue<Value>>(memoryOrValue)) {
-    result = std::move(std::get<UniqueValue<Value>>(memoryOrValue));
+  if (auto *gcRegistor = std::get_if<GC::RootRegister>(&memoryOrValueOrChar)) {
+    if (gcRegistor->hasValue())
+      result = std::move(*gcRegistor);
+    else {
+      auto *valueMemory = gcRegistor->getMemory()->cast<ValueMemory>();
+      result = context->getGC()->registerRoot(valueMemory->get());
+    }
     return;
   }
 
-  auto *valueMemory = std::get<Memory *>(memoryOrValue)->cast<ValueMemory>();
-  result = valueMemory->view()->clone();
+  llvm_unreachable("All cases should be handled");
 }
 
 void RvExprInterpreter::visit(const MatchExpression &expr) {
   expr.getExpr()->accept(*this);
   if (diag.hasError())
     return;
-  auto value = std::move(result);
+  auto valueR = std::move(result);
+  auto value = valueR.getValue();
 
   for (const auto &[pattern, expr] : expr.getMatchCases()) {
-    Environment::Scope scope(getEnv());
-    if (stmtInterpreter->matchPattern(*pattern, value.get())) {
+    Environment::Scope scope(getCurrEnv());
+    if (stmtInterpreter->matchPattern(*pattern, value)) {
       expr->accept(*this);
       return;
     }
@@ -160,8 +175,10 @@ void RvExprInterpreter::visit(const MatchExpression &expr) {
 }
 
 void RvExprInterpreter::visit(const LambdaExpression &expr) {
-  auto capturedEnv = getEnv().capture(context);
-  result = LambdaValue::create(capturedEnv, &expr);
+  GCSAFE(context->getGC()) {
+    auto lambdaV = LambdaValue::create(context, getCurrEnv(), &expr);
+    result = context->getGC()->registerRoot(lambdaV);
+  }
 }
 
 void RvExprInterpreter::visit(const BinaryExpression &expr) {
@@ -171,17 +188,20 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
     if (diag.hasError())
       return;
     auto lhs = std::move(result);
-    auto lhsBoolOpt = lhs->toBool();
+    auto lhsBoolOpt = lhs.getValue()->toBool();
     if (!lhsBoolOpt) {
       stmtInterpreter->report(
           expr.getLhs()->getRange(),
           InterpretDiagnostic::error_invalid_operand_for_binary_operator,
-          operatorToString(expr.getOperator()), lhs->toString());
+          operatorToString(expr.getOperator()), lhs.getValue()->toString());
       return;
     }
 
     if (!*lhsBoolOpt) {
-      result = BoolValue::create(false);
+      GCSAFE(context->getGC()) {
+        auto boolV = BoolValue::create(context, false);
+        result = context->getGC()->registerRoot(boolV);
+      }
       return;
     }
 
@@ -189,16 +209,19 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
     if (diag.hasError())
       return;
     auto rhs = std::move(result);
-    auto rhsBoolOpt = rhs->toBool();
+    auto rhsBoolOpt = rhs.getValue()->toBool();
     if (!rhsBoolOpt) {
       stmtInterpreter->report(
           expr.getRhs()->getRange(),
           InterpretDiagnostic::error_invalid_operand_for_binary_operator,
-          operatorToString(expr.getOperator()), rhs->toString());
+          operatorToString(expr.getOperator()), rhs.getValue()->toString());
       return;
     }
 
-    result = BoolValue::create(*rhsBoolOpt);
+    GCSAFE(context->getGC()) {
+      auto boolV = BoolValue::create(context, *rhsBoolOpt);
+      result = context->getGC()->registerRoot(boolV);
+    }
     return;
   }
   case Operator::Or: {
@@ -206,17 +229,20 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
     if (diag.hasError())
       return;
     auto lhs = std::move(result);
-    auto lhsBoolOpt = lhs->toBool();
+    auto lhsBoolOpt = lhs.getValue()->toBool();
     if (!lhsBoolOpt) {
       stmtInterpreter->report(
           expr.getLhs()->getRange(),
           InterpretDiagnostic::error_invalid_operand_for_binary_operator,
-          operatorToString(expr.getOperator()), lhs->toString());
+          operatorToString(expr.getOperator()), lhs.getValue()->toString());
       return;
     }
 
     if (*lhsBoolOpt) {
-      result = BoolValue::create(true);
+      GCSAFE(context->getGC()) {
+        auto boolV = BoolValue::create(context, true);
+        result = context->getGC()->registerRoot(boolV);
+      }
       return;
     }
 
@@ -224,16 +250,19 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
     if (diag.hasError())
       return;
     auto rhs = std::move(result);
-    auto rhsBoolOpt = rhs->toBool();
+    auto rhsBoolOpt = rhs.getValue()->toBool();
     if (!rhsBoolOpt) {
       stmtInterpreter->report(
           expr.getRhs()->getRange(),
           InterpretDiagnostic::error_invalid_operand_for_binary_operator,
-          operatorToString(expr.getOperator()), rhs->toString());
+          operatorToString(expr.getOperator()), rhs.getValue()->toString());
       return;
     }
 
-    result = BoolValue::create(*rhsBoolOpt);
+    GCSAFE(context->getGC()) {
+      auto boolV = BoolValue::create(context, *rhsBoolOpt);
+      result = context->getGC()->registerRoot(boolV);
+    }
     return;
   }
   case Operator::Eq: {
@@ -247,8 +276,11 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
       return;
     auto rhs = std::move(result);
 
-    auto isSame = lhs->isEqual(rhs.get());
-    result = BoolValue::create(isSame);
+    auto isSame = lhs.getValue()->isEqual(rhs.getValue());
+    GCSAFE(context->getGC()) {
+      auto boolV = BoolValue::create(context, isSame);
+      result = context->getGC()->registerRoot(boolV);
+    }
     return;
   }
   case Operator::Ne: {
@@ -262,8 +294,11 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
       return;
     auto rhs = std::move(result);
 
-    auto isSame = lhs->isEqual(rhs.get());
-    result = BoolValue::create(!isSame);
+    auto isSame = lhs.getValue()->isEqual(rhs.getValue());
+    GCSAFE(context->getGC()) {
+      auto boolV = BoolValue::create(context, !isSame);
+      result = context->getGC()->registerRoot(boolV);
+    }
     return;
   }
   default:
@@ -277,16 +312,17 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
       return;
     auto rhs = std::move(result);
 
-    result =
-        binaryOp(expr.getRange(), lhs.get(), rhs.get(), expr.getOperator());
-    if (!result) {
+    auto resultOpt = binaryOp(expr.getRange(), lhs.getValue(), rhs.getValue(),
+                              expr.getOperator());
+    if (!resultOpt) {
       stmtInterpreter->report(
           expr.getRange(),
           InterpretDiagnostic::error_invalid_operand_for_binary_operator,
-          operatorToString(expr.getOperator()), lhs->toString(),
-          rhs->toString());
+          operatorToString(expr.getOperator()), lhs.getValue()->toString(),
+          rhs.getValue()->toString());
+      return;
     }
-    return;
+    result = std::move(*resultOpt);
   }
 }
 
@@ -298,12 +334,15 @@ void RvExprInterpreter::visit(const UnaryExpression &expr) {
 
   switch (expr.getOperator()) {
   case Operator::Plus:
-    llvm::TypeSwitch<Value *>(operand.get())
+    llvm::TypeSwitch<Value *>(operand.getValue())
         .Case(
             [&](const IntegerValue *integerV) { result = std::move(operand); })
         .Case([&](const FloatValue *floatV) { result = std::move(operand); })
         .Case([&](const BoolValue *boolV) {
-          result = IntegerValue::create(boolV->getValue());
+          GCSAFE(context->getGC()) {
+            auto intV = IntegerValue::create(context, boolV->getValue());
+            result = context->getGC()->registerRoot(intV);
+          }
         })
         .Default([this, expr](const Value *value) {
           stmtInterpreter->report(
@@ -314,51 +353,61 @@ void RvExprInterpreter::visit(const UnaryExpression &expr) {
     return;
 
   case Operator::Minus:
-    llvm::TypeSwitch<Value *>(operand.get())
-        .Case([&](const BoolValue *boolV) {
-          result = IntegerValue::create(-boolV->getValue());
-        })
-        .Case([&](const IntegerValue *integerV) {
-          result = IntegerValue::create(-integerV->getValue());
-        })
-        .Case([&](const FloatValue *floatV) {
-          result = FloatValue::create(-floatV->getValue());
-        })
-        .Default([&](const Value *value) {
-          stmtInterpreter->report(
-              expr.getRange(),
-              InterpretDiagnostic::error_invalid_operand_for_unary_operator,
-              operatorToString(expr.getOperator()), value->toString());
-        });
+    GCSAFE(context->getGC()) {
+      llvm::TypeSwitch<Value *>(operand.getValue())
+          .Case([&](const BoolValue *boolV) {
+            auto minusV = IntegerValue::create(context, -boolV->getValue());
+            result = context->getGC()->registerRoot(minusV);
+          })
+          .Case([&](const IntegerValue *integerV) {
+            auto minusV = IntegerValue::create(context, -integerV->getValue());
+            result = context->getGC()->registerRoot(minusV);
+          })
+          .Case([&](const FloatValue *floatV) {
+            auto minusV = FloatValue::create(context, -floatV->getValue());
+            result = context->getGC()->registerRoot(minusV);
+          })
+          .Default([&](const Value *value) {
+            stmtInterpreter->report(
+                expr.getRange(),
+                InterpretDiagnostic::error_invalid_operand_for_unary_operator,
+                operatorToString(expr.getOperator()), value->toString());
+          });
+    }
     return;
 
   case Operator::Not: {
-    auto boolOpt = operand->toBool();
+    auto boolOpt = operand.getValue()->toBool();
     if (!boolOpt) {
       stmtInterpreter->report(
           expr.getRange(),
           InterpretDiagnostic::error_invalid_operand_for_unary_operator,
-          operatorToString(expr.getOperator()), operand->toString());
+          operatorToString(expr.getOperator()), operand.getValue()->toString());
       return;
     }
-    result = BoolValue::create(!*boolOpt);
+    auto notV = BoolValue::create(context, !*boolOpt);
+    result = context->getGC()->registerRoot(notV);
     return;
   }
 
   case Operator::BitNot: {
-    llvm::TypeSwitch<Value *>(operand.get())
-        .Case([&](const BoolValue *boolV) {
-          result = IntegerValue::create(!boolV->getValue());
-        })
-        .Case([&](const IntegerValue *integerV) {
-          result = IntegerValue::create(~integerV->getValue());
-        })
-        .Default([&](const Value *value) {
-          stmtInterpreter->report(
-              expr.getRange(),
-              InterpretDiagnostic::error_invalid_operand_for_unary_operator,
-              operatorToString(expr.getOperator()), value->toString());
-        });
+    GCSAFE(context->getGC()) {
+      llvm::TypeSwitch<Value *>(operand.getValue())
+          .Case([&](const BoolValue *boolV) {
+            auto notV = IntegerValue::create(context, !boolV->getValue());
+            result = context->getGC()->registerRoot(notV);
+          })
+          .Case([&](const IntegerValue *integerV) {
+            auto notV = IntegerValue::create(context, ~integerV->getValue());
+            result = context->getGC()->registerRoot(notV);
+          })
+          .Default([&](const Value *value) {
+            stmtInterpreter->report(
+                expr.getRange(),
+                InterpretDiagnostic::error_invalid_operand_for_unary_operator,
+                operatorToString(expr.getOperator()), value->toString());
+          });
+    }
   }
   default:
     llvm_unreachable("never used for unary operation");
@@ -371,11 +420,12 @@ void RvExprInterpreter::visit(const ConditionalExpression &expr) {
     return;
   auto cond = std::move(result);
 
-  auto condBoolOpt = cond->toBool();
+  auto condBoolOpt = cond.getValue()->toBool();
   if (!condBoolOpt) {
     stmtInterpreter->report(
         expr.getCond()->getRange(),
-        InterpretDiagnostic::error_invalid_to_conver_boolean, cond->toString());
+        InterpretDiagnostic::error_invalid_to_conver_boolean,
+        cond.getValue()->toString());
     return;
   }
 
@@ -390,14 +440,15 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
   if (diag.hasError())
     return;
   auto callee = std::move(result);
-  if (!callee->isa<FunctionValue, LambdaValue, BuiltinFunctionValue>()) {
+  if (!callee.getValue()
+           ->isa<FunctionValue, LambdaValue, BuiltinFunctionValue>()) {
     stmtInterpreter->report(expr.getRange(),
                             InterpretDiagnostic::error_invalid_callee,
-                            callee->toString());
+                            callee.getValue()->toString());
     return;
   }
 
-  SmallVector<UniqueValue<Value>> args;
+  SmallVector<GC::RootRegister> args;
   args.reserve(expr.getArgs().size());
   for (auto *argExpr : expr.getArgs()) {
     argExpr->accept(*this);
@@ -406,18 +457,22 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
     args.emplace_back(std::move(result));
   }
 
-  llvm::TypeSwitch<Value *, void>(callee.get())
+  llvm::TypeSwitch<Value *, void>(callee.getValue())
       // User defined function
       .Case([&](FunctionValue *functionV) {
-        StmtInterpreter::ReplaceEnvScope replace(*stmtInterpreter,
-                                                 functionV->getEnvironment());
-        Environment::Scope scope(getEnv());
+        Environment savedEnv(context->getBuiltinFuncTable(),
+                             functionV->getEnvVars());
+        StmtInterpreter::StackScope stackScope(*stmtInterpreter,
+                                               std::move(savedEnv));
+        Environment::Scope scope(getCurrEnv());
 
         auto *funcDecl = functionV->getDeclaration();
 
         /// for recursive call
-        getEnv().insert(funcDecl->getName(),
-                        ImmutableMemory::create(context, functionV->clone()));
+        GCSAFE(context->getGC()) {
+          getCurrEnv().insert(funcDecl->getName(),
+                              ImmutableMemory::create(context, functionV));
+        }
         auto params = funcDecl->getParams();
 
         if (params.size() != args.size()) {
@@ -430,17 +485,19 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
         }
 
         for (const auto &[ident, value] : llvm::zip(params, args)) {
-          if (getEnv().isDefinedCurrScope(ident)) {
+          if (getCurrEnv().isDefinedCurrScope(ident)) {
             stmtInterpreter->report(
                 expr.getRange(),
                 InterpretDiagnostic::error_redefinition_in_scope, ident);
             return;
           }
-          getEnv().insert(ident,
-                          ValueMemory::create(context, std::move(value)));
+          GCSAFE(context->getGC()) {
+            getCurrEnv().insert(ident,
+                                ValueMemory::create(context, value.getValue()));
+          }
         }
 
-        Environment::Scope bodyScope(getEnv());
+        Environment::Scope bodyScope(getCurrEnv());
 
         for (auto *body : funcDecl->getBody()) {
           body->accept(*stmtInterpreter);
@@ -461,17 +518,23 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
               stmtInterpreter->breakFlag->getRange(),
               InterpretDiagnostic::error_unresolved_break_statement);
         } else if (stmtInterpreter->returnFlag) {
-          result = std::move(stmtInterpreter->returnValue);
+          result = context->getGC()->registerRoot(stmtInterpreter->returnValue);
           stmtInterpreter->returnFlag = nullptr;
+          stmtInterpreter->returnValue = nullptr;
         } else {
-          result = NilValue::create();
+          GCSAFE(context->getGC()) {
+            auto nilV = NilValue::create(context);
+            result = context->getGC()->registerRoot(nilV);
+          }
         }
       })
       // Lambda function
       .Case([&](LambdaValue *lambdaV) {
-        StmtInterpreter::ReplaceEnvScope replaceScope(
-            *stmtInterpreter, lambdaV->getEnvironment());
-        Environment::Scope scope(getEnv());
+        Environment capturedEnv(context->getBuiltinFuncTable(),
+                                lambdaV->getCaptures());
+        StmtInterpreter::StackScope replaceScope(*stmtInterpreter,
+                                                 std::move(capturedEnv));
+        Environment::Scope scope(getCurrEnv());
 
         auto lambdaDecl = lambdaV->getExpression();
 
@@ -484,17 +547,19 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
         }
 
         for (const auto &[param, value] : llvm::zip(params, args)) {
-          if (getEnv().isDefinedCurrScope(param)) {
+          if (getCurrEnv().isDefinedCurrScope(param)) {
             stmtInterpreter->report(
                 expr.getRange(),
                 InterpretDiagnostic::error_redefinition_in_scope, param);
             return;
           }
-          getEnv().insert(param,
-                          ValueMemory::create(context, std::move(value)));
+          GCSAFE(context->getGC()) {
+            getCurrEnv().insert(param,
+                                ValueMemory::create(context, value.getValue()));
+          }
         }
 
-        Environment::Scope bodyScope(getEnv());
+        Environment::Scope bodyScope(getCurrEnv());
 
         if (lambdaDecl->isExprBody()) {
           lambdaDecl->getExprBody()->accept(*this);
@@ -513,40 +578,56 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
                 stmtInterpreter->breakFlag->getRange(),
                 InterpretDiagnostic::error_unresolved_break_statement);
           } else if (stmtInterpreter->returnFlag) {
-            result = std::move(stmtInterpreter->returnValue);
+            result =
+                context->getGC()->registerRoot(stmtInterpreter->returnValue);
             stmtInterpreter->returnFlag = nullptr;
+            stmtInterpreter->returnValue = nullptr;
           } else {
-            result = NilValue::create();
+            GCSAFE(context->getGC()) {
+              auto nilV = NilValue::create(context);
+              result = context->getGC()->registerRoot(nilV);
+            }
           }
         }
       })
       .Case([&](BuiltinFunctionValue *builtinV) {
         auto func = builtinV->getFuncBody();
-        result = func(args, diag, expr.getRange(), context);
+        GCSAFE(context->getGC()) {
+          auto resultV =
+              func(llvm::map_to_vector(args,
+                                       [&](const GC::RootRegister &reg) {
+                                         return reg.getValue();
+                                       }),
+                   diag, expr.getRange(), context);
+          if (resultV)
+            result = context->getGC()->registerRoot(resultV);
+        }
       })
       .Default(
           [&](Value *) { llvm_unreachable("never used for call operation"); });
 }
 
 void RvExprInterpreter::visit(const ArrayExpression &expr) {
-  SmallVector<ValueMemory *> memories;
-  memories.reserve(expr.getSize());
+  SmallVector<GC::RootRegister> registers;
+  registers.reserve(expr.getSize());
 
   for (auto *elementExpr : expr.getArgs()) {
     elementExpr->accept(*this);
     if (diag.hasError())
       return;
-
-    auto *valueMemory = ValueMemory::create(context, std::move(result));
-    memories.emplace_back(valueMemory);
+    registers.emplace_back(std::move(result));
   }
 
-  auto *vectorMemory = VectorMemory::create(context, memories);
-  result = ListValue::create(vectorMemory);
+  GCSAFE(context->getGC()) {
+    auto listV = ListValue::create(
+        context, llvm::map_to_vector(
+                     registers, [&](auto &reg) { return reg.getValue(); }));
+    result = context->getGC()->registerRoot(listV);
+  }
 }
 
 void RvExprInterpreter::visit(const TupleExpression &expr) {
-  SmallVector<UniqueValue<Value>> values;
+  SmallVector<GC::RootRegister> values;
   values.reserve(expr.getSize());
 
   for (auto *elementExpr : expr.getExprs()) {
@@ -557,7 +638,12 @@ void RvExprInterpreter::visit(const TupleExpression &expr) {
     values.emplace_back(std::move(result));
   }
 
-  result = TupleValue::create(std::move(values));
+  GCSAFE(context->getGC()) {
+    auto tupleV = TupleValue::create(
+        context,
+        llvm::map_to_vector(values, [&](auto &reg) { return reg.getValue(); }));
+    result = context->getGC()->registerRoot(tupleV);
+  }
 }
 
 void RvExprInterpreter::visit(const GroupExpression &expr) {
@@ -571,24 +657,39 @@ void RvExprInterpreter::visit(const IntegerLiteral &expr) {
                             InterpretDiagnostic::warning_integer_overflow);
   }
 
-  result = IntegerValue::create(expr.getValue());
+  GCSAFE(context->getGC()) {
+    auto intV = IntegerValue::create(context, expr.getValue());
+    result = context->getGC()->registerRoot(intV);
+  }
 }
 
 void RvExprInterpreter::visit(const BooleanLiteral &expr) {
-  result = BoolValue::create(expr.getValue());
+  GCSAFE(context->getGC()) {
+    auto boolV = BoolValue::create(context, expr.getValue());
+    result = context->getGC()->registerRoot(boolV);
+  }
 }
 
 void RvExprInterpreter::visit(const FloatLiteral &expr) {
-  result = FloatValue::create(expr.getValue());
+  GCSAFE(context->getGC()) {
+    auto floatV = FloatValue::create(context, expr.getValue());
+    result = context->getGC()->registerRoot(floatV);
+  }
 }
 
 void RvExprInterpreter::visit(const StringLiteral &expr) {
-  auto value = evalStringLiteral(expr.getValue());
-  result = StringValue::create(value);
+  GCSAFE(context->getGC()) {
+    auto strV =
+        StringValue::create(context, evalStringLiteral(expr.getValue()));
+    result = context->getGC()->registerRoot(strV);
+  }
 }
 
 void RvExprInterpreter::visit(const NilLiteral &expr) {
-  result = NilValue::create();
+  GCSAFE(context->getGC()) {
+    auto nilV = NilValue::create(context);
+    result = context->getGC()->registerRoot(nilV);
+  }
 }
 
 } // namespace bara

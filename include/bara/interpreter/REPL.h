@@ -14,7 +14,7 @@ public:
   REPL(raw_ostream &os = outs(), raw_ostream &err = errs(),
        raw_ostream &printOS = outs())
       : os(os), diag(srcMgr, err), astContext(), memoryContext(),
-        interpreter(&memoryContext, diag), scope(interpreter.getEnv()) {
+        interpreter(&memoryContext, diag), scope(interpreter.getCurrEnv()) {
     setPrintOS(printOS);
   }
 

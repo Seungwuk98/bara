@@ -1,9 +1,7 @@
 import argparse 
 import subprocess
 import os
-import resource
 import time as timeModule
-from enum import Enum, unique
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -45,10 +43,6 @@ def parse_args():
     return parser.parse_args()
 
 class Time:
-    @unique
-    class Row(Enum):
-        TIME = 0
-
     @staticmethod
     def run(command, *args, **kwargs):
         command = ['time', '-f', "%M", *command]

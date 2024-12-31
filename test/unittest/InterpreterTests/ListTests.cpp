@@ -19,17 +19,14 @@ TEST(INTERPRETER_TEST_SUITE, ListRefTests) {
   auto listView = listValue->cast<ListValue>();
   ASSERT_EQ(listView->size(), 3);
 
-  ASSERT_TRUE(listView->getElement(0)->view()->isa<IntegerValue>());
-  ASSERT_EQ(listView->getElement(0)->view()->cast<IntegerValue>()->getValue(),
-            1);
+  ASSERT_TRUE(listView->get(0)->get()->isa<IntegerValue>());
+  ASSERT_EQ(listView->get(0)->get()->cast<IntegerValue>()->getValue(), 1);
 
-  ASSERT_TRUE(listView->getElement(1)->view()->isa<IntegerValue>());
-  ASSERT_EQ(listView->getElement(1)->view()->cast<IntegerValue>()->getValue(),
-            2);
+  ASSERT_TRUE(listView->get(1)->get()->isa<IntegerValue>());
+  ASSERT_EQ(listView->get(1)->get()->cast<IntegerValue>()->getValue(), 2);
 
-  ASSERT_TRUE(listView->getElement(2)->view()->isa<IntegerValue>());
-  ASSERT_EQ(listView->getElement(2)->view()->cast<IntegerValue>()->getValue(),
-            3);
+  ASSERT_TRUE(listView->get(2)->get()->isa<IntegerValue>());
+  ASSERT_EQ(listView->get(2)->get()->cast<IntegerValue>()->getValue(), 3);
 
   auto listValue2 = testProgram.statement("b[0] = 10;").eval("a[0]");
   ASSERT_FALSE(testProgram.hasError());
@@ -49,12 +46,10 @@ TEST(INTERPRETER_TEST_SUITE, ListRefTests) {
   auto listView4 = listValue4->cast<ListValue>();
   ASSERT_EQ(listView4->size(), 2);
 
-  ASSERT_TRUE(listView4->getElement(0)->view()->isa<IntegerValue>());
-  ASSERT_EQ(listView4->getElement(0)->view()->cast<IntegerValue>()->getValue(),
-            10);
+  ASSERT_TRUE(listView4->get(0)->get()->isa<IntegerValue>());
+  ASSERT_EQ(listView4->get(0)->get()->cast<IntegerValue>()->getValue(), 10);
 
-  ASSERT_TRUE(listView4->getElement(1)->view()->isa<IntegerValue>());
-  ASSERT_EQ(listView4->getElement(1)->view()->cast<IntegerValue>()->getValue(),
-            2);
+  ASSERT_TRUE(listView4->get(1)->get()->isa<IntegerValue>());
+  ASSERT_EQ(listView4->get(1)->get()->cast<IntegerValue>()->getValue(), 2);
 }
 } // namespace bara

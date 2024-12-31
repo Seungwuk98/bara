@@ -2,6 +2,7 @@
 #define BARA_INTERPRETER_H
 
 #include "bara/ast/AST.h"
+#include "bara/context/GarbageCollector.h"
 #include "bara/context/MemoryContext.h"
 #include "bara/diagnostic/Diagnostic.h"
 #include "bara/interpreter/Environment.h"
@@ -25,9 +26,9 @@ public:
 #define STATEMENT(Name) void visit(const Name &stmt);
 #include "bara/ast/Statement.def"
 
-  Memory *lvInterpret(const Expression &ast);
-  UniqueValue<Value> rvInterpret(const Expression &ast);
-  Environment &getEnv() { return env; }
+  GC::RootRegister lvInterpret(const Expression &ast);
+  GC::RootRegister rvInterpret(const Expression &ast);
+  Environment &getCurrEnv() { return *stack.back(); }
 
 private:
   struct InterpretDiagnostic {
@@ -48,17 +49,21 @@ private:
                     .str());
   }
 
-  struct ReplaceEnvScope {
-    ReplaceEnvScope(StmtInterpreter &interpreter, const Environment &env)
-        : interpreter(interpreter), savedEnv(std::move(interpreter.env)) {
-      interpreter.env = env;
+  struct StackScope {
+    StackScope(const StackScope &) = delete;
+    StackScope &operator=(const StackScope &) = delete;
+    StackScope(StackScope &&) = delete;
+    StackScope &operator=(StackScope &&) = delete;
+
+    StackScope(StmtInterpreter &interpreter, const Environment &env)
+        : interpreter(interpreter) {
+      interpreter.stack.emplace_back(std::make_unique<Environment>(env));
     }
 
-    ~ReplaceEnvScope() { interpreter.env = std::move(savedEnv); }
+    ~StackScope() { interpreter.stack.pop_back(); }
 
   private:
     StmtInterpreter &interpreter;
-    Environment savedEnv;
   };
 
   void patternDeclaration(const Pattern &pattern);
@@ -68,11 +73,12 @@ private:
   friend class CommonExprInterpreter;
   friend class RvExprInterpreter;
   friend class LvExprInterpreter;
+  friend class GC;
 
   MemoryContext *context;
   Diagnostic &diag;
 
-  Environment env;
+  SmallVector<std::unique_ptr<Environment>> stack;
   RvExprInterpreter *rvInterpreter;
   LvExprInterpreter *lvInterpreter;
 
@@ -83,7 +89,7 @@ private:
   const ContinueStatement *continueFlag = nullptr;
   const BreakStatement *breakFlag = nullptr;
   const ReturnStatement *returnFlag = nullptr;
-  UniqueValue<Value> returnValue = nullptr;
+  Value *returnValue = nullptr;
 };
 
 void interpret(const Program *program, MemoryContext *context,

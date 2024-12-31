@@ -1,5 +1,7 @@
 #include "bara/interpreter/Value.h"
 #include "bara/ast/AST.h"
+#include "bara/context/GarbageCollector.h"
+#include "bara/context/MemoryContext.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/Support/ManagedStatic.h"
 
@@ -33,23 +35,6 @@ private:
 
 llvm::ManagedStatic<ToBoolVisitor> toBoolVisitor;
 
-class CloneVisitor : public ConstValueVisitorBase<CloneVisitor> {
-public:
-  CloneVisitor() : result(nullptr) {}
-
-  void init() { result = nullptr; }
-
-#define VALUE(Name) void visit(const Name##Value &value);
-#include "bara/interpreter/Value.def"
-
-  UniqueValue<Value> getResult() { return std::move(result); }
-
-private:
-  UniqueValue<Value> result;
-};
-
-llvm::ManagedStatic<CloneVisitor> cloneVisitor;
-
 class ValueEqVisitor : public ConstValueVisitorBase<ValueEqVisitor> {
 public:
   ValueEqVisitor(const Value *r) : r(r), result(false) {}
@@ -76,12 +61,6 @@ string Value::toString() const {
   return os.str();
 }
 
-UniqueValue<Value> Value::clone() const {
-  cloneVisitor->init();
-  accept(*cloneVisitor);
-  return cloneVisitor->getResult();
-}
-
 optional<bool> Value::toBool() const {
   toBoolVisitor->init();
   accept(*toBoolVisitor);
@@ -98,9 +77,10 @@ bool Value::isEqual(const Value *other) const {
 /// IntegerValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<IntegerValue> IntegerValue::create(int64_t value) {
-  auto *mem = new (malloc(sizeof(IntegerValue))) IntegerValue(value);
-  return UniqueValue<IntegerValue>(mem);
+IntegerValue *IntegerValue::create(MemoryContext *context, int64_t value) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  return new (context->alloc(sizeof(IntegerValue)))
+      IntegerValue(context, value);
 }
 
 void ValuePrintVisitor::visit(const IntegerValue &value) {
@@ -109,10 +89,6 @@ void ValuePrintVisitor::visit(const IntegerValue &value) {
 
 void ToBoolVisitor::visit(const IntegerValue &value) {
   result = value.getValue() != 0;
-}
-
-void CloneVisitor::visit(const IntegerValue &value) {
-  result = IntegerValue::create(value.getValue());
 }
 
 void ValueEqVisitor::visit(const IntegerValue &l) {
@@ -126,19 +102,15 @@ void ValueEqVisitor::visit(const IntegerValue &l) {
 /// BoolValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<BoolValue> BoolValue::create(bool value) {
-  auto *mem = new (malloc(sizeof(BoolValue))) BoolValue(value);
-  return UniqueValue<BoolValue>(mem);
+BoolValue *BoolValue::create(MemoryContext *context, bool value) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  return new (context->alloc(sizeof(BoolValue))) BoolValue(context, value);
 }
 
 void ToBoolVisitor::visit(const BoolValue &value) { result = value.getValue(); }
 
 void ValuePrintVisitor::visit(const BoolValue &value) {
   printer << (value.getValue() ? "true" : "false");
-}
-
-void CloneVisitor::visit(const BoolValue &value) {
-  result = BoolValue::create(value.getValue());
 }
 
 void ValueEqVisitor::visit(const BoolValue &l) {
@@ -152,14 +124,14 @@ void ValueEqVisitor::visit(const BoolValue &l) {
 /// FloatValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<FloatValue> FloatValue::create(StringRef value) {
-  auto *mem = new (malloc(sizeof(FloatValue))) FloatValue(value);
-  return UniqueValue<FloatValue>(mem);
+FloatValue *FloatValue::create(MemoryContext *context, StringRef value) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  return new (context->alloc(sizeof(FloatValue))) FloatValue(context, value);
 }
 
-UniqueValue<FloatValue> FloatValue::create(const APFloat &value) {
-  auto *mem = new (malloc(sizeof(FloatValue))) FloatValue(value);
-  return UniqueValue<FloatValue>(mem);
+FloatValue *FloatValue::create(MemoryContext *context, const APFloat &value) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  return new (context->alloc(sizeof(FloatValue))) FloatValue(context, value);
 }
 
 void ValuePrintVisitor::visit(const FloatValue &value) {
@@ -170,12 +142,6 @@ void ValuePrintVisitor::visit(const FloatValue &value) {
 
 void ToBoolVisitor::visit(const FloatValue &value) {
   result = value.getValue().convertToDouble() != 0.0;
-}
-
-void CloneVisitor::visit(const FloatValue &value) {
-  SmallVector<char> buffer;
-  value.getValue().toString(buffer);
-  result = FloatValue::create(StringRef{buffer.data(), buffer.size()});
 }
 
 void ValueEqVisitor::visit(const FloatValue &l) {
@@ -189,12 +155,14 @@ void ValueEqVisitor::visit(const FloatValue &l) {
 /// StringValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<StringValue> StringValue::create(StringRef value) {
+StringValue *StringValue::create(MemoryContext *context, StringRef value) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
   auto sizeToAlloc = totalSizeToAlloc<char>(value.size());
-  auto *stringValue = new (malloc(sizeToAlloc)) StringValue(value.size());
+  auto *stringValue =
+      new (context->alloc(sizeToAlloc)) StringValue(context, value.size());
   std::uninitialized_copy(value.begin(), value.end(),
                           stringValue->getTrailingObjects<char>());
-  return UniqueValue<StringValue>(stringValue);
+  return stringValue;
 }
 
 void ValuePrintVisitor::visit(const StringValue &value) {
@@ -203,10 +171,6 @@ void ValuePrintVisitor::visit(const StringValue &value) {
 
 void ToBoolVisitor::visit(const StringValue &value) {
   result = !value.getValue().empty();
-}
-
-void CloneVisitor::visit(const StringValue &value) {
-  result = StringValue::create(value.getValue());
 }
 
 void ValueEqVisitor::visit(const StringValue &l) {
@@ -220,29 +184,60 @@ void ValueEqVisitor::visit(const StringValue &l) {
 /// ListValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<ListValue>
-ListValue::create(MemoryContext *context,
-                  MutableArrayRef<UniqueValue<Value>> value) {
-  auto valueMemorys =
-      llvm::map_to_vector(value, [context](UniqueValue<Value> &value) {
-        return ValueMemory::create(context, std::move(value));
-      });
+ListValue *ListValue::create(MemoryContext *context, ArrayRef<Value *> value) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  auto valueMemories = llvm::map_to_vector(value, [context](Value *value) {
+    return ValueMemory::create(context, value);
+  });
 
-  auto *vectorMemory = VectorMemory::create(context, valueMemorys);
+  VectorMemory *vectorMemory;
+  if (value.size() <= 4)
+    vectorMemory = VectorMemory::create(context, valueMemories, 4);
+  else
+    vectorMemory = VectorMemory::create(context, valueMemories, value.size());
 
-  return UniqueValue<ListValue>(new (malloc(sizeof(ListValue)))
-                                    ListValue(vectorMemory));
+  return new (context->alloc(sizeof(ListValue)))
+      ListValue(context, value.size(), vectorMemory);
 }
 
-UniqueValue<ListValue> ListValue::create(VectorMemory *memory) {
-  auto *mem = new (malloc(sizeof(ListValue))) ListValue(memory);
-  return UniqueValue<ListValue>(mem);
+void ListValue::reallocate(size_t newCapacity) {
+  assert(getContext()->getGC()->isLocked() && "GC must be locked");
+  auto values = memories->getMemories().slice(0, length);
+  auto *newMemories = VectorMemory::create(getContext(), values, newCapacity);
+  memories = newMemories;
+}
+
+void ListValue::push(Value *value) {
+  assert(value && "Value must not be null");
+  GCSAFE(getContext()->getGC()) {
+    if (length == memories->getCapacity())
+      reallocate(memories->getCapacity() << 1);
+    memories->get(length++)->assign(value);
+  }
+}
+
+Value *ListValue::pop() {
+  if (length == 0)
+    return nullptr;
+
+  /// Poped value is unreacheable by this ListValue.
+  /// So, it can be a target of GC
+  auto popedMemory = memories->get(--length);
+  auto *value = popedMemory->get();
+  popedMemory->assign(nullptr);
+  return value;
+}
+
+ValueMemory *ListValue::get(size_t index) const {
+  if (index >= length)
+    return nullptr;
+  return memories->get(index);
 }
 
 void ValuePrintVisitor::visit(const ListValue &value) {
   printer << '[';
-  for (auto [idx, mem] : llvm::enumerate(*value.getVectorMemory())) {
-    auto *view = mem->view();
+  for (auto [idx, mem] : llvm::enumerate(value.getMemories())) {
+    auto *view = mem->get();
     printer << view->toString();
     if (idx != value.size() - 1)
       printer << ", ";
@@ -251,10 +246,6 @@ void ValuePrintVisitor::visit(const ListValue &value) {
 }
 
 void ToBoolVisitor::visit(const ListValue &value) { result = !value.empty(); }
-
-void CloneVisitor::visit(const ListValue &value) {
-  result = ListValue::create(value.getVectorMemory());
-}
 
 void ValueEqVisitor::visit(const ListValue &l) {
   auto value = false;
@@ -267,14 +258,15 @@ void ValueEqVisitor::visit(const ListValue &l) {
 /// TupleValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<TupleValue>
-TupleValue::create(SmallVector<UniqueValue<Value>> mems) {
-  auto sizeToAlloc = totalSizeToAlloc<UniqueValue<Value>>(mems.size());
-  auto *mem = new (malloc(sizeToAlloc)) TupleValue(mems.size());
+TupleValue *TupleValue::create(MemoryContext *context, ArrayRef<Value *> mems) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  auto sizeToAlloc = totalSizeToAlloc<Value *>(mems.size());
+  auto *mem =
+      new (context->alloc(sizeToAlloc)) TupleValue(context, mems.size());
   std::uninitialized_move(mems.begin(), mems.end(),
-                          mem->getTrailingObjects<UniqueValue<Value>>());
+                          mem->getTrailingObjects<Value *>());
 
-  return UniqueValue<TupleValue>(mem);
+  return mem;
 }
 
 void ValuePrintVisitor::visit(const TupleValue &value) {
@@ -290,12 +282,6 @@ void ValuePrintVisitor::visit(const TupleValue &value) {
 }
 
 void ToBoolVisitor::visit(const TupleValue &value) { result = !value.empty(); }
-
-void CloneVisitor::visit(const TupleValue &value) {
-  auto values = llvm::map_to_vector(
-      value.getValues(), [](const auto &element) { return element->clone(); });
-  result = TupleValue::create(std::move(values));
-}
 
 void ValueEqVisitor::visit(const TupleValue &l) {
   auto value = false;
@@ -319,16 +305,14 @@ void ValueEqVisitor::visit(const TupleValue &l) {
 /// NilValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<NilValue> NilValue::create() {
-  auto *mem = new (malloc(sizeof(NilValue))) NilValue();
-  return UniqueValue<NilValue>(mem);
+NilValue *NilValue::create(MemoryContext *context) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  return new (context->alloc(sizeof(NilValue))) NilValue(context);
 }
 
 void ValuePrintVisitor::visit(const NilValue &value) { printer << "nil"; }
 
 void ToBoolVisitor::visit(const NilValue &value) { result = false; }
-
-void CloneVisitor::visit(const NilValue &value) { result = NilValue::create(); }
 
 void ValueEqVisitor::visit(const NilValue &l) { result = r->isa<NilValue>(); }
 
@@ -336,10 +320,18 @@ void ValueEqVisitor::visit(const NilValue &l) { result = r->isa<NilValue>(); }
 /// FunctionValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<FunctionValue>
-FunctionValue::create(const Environment &env, const FunctionDeclaration *decl) {
-  auto *mem = new (malloc(sizeof(FunctionValue))) FunctionValue(env, decl);
-  return UniqueValue<FunctionValue>(mem);
+FunctionValue *FunctionValue::create(MemoryContext *context,
+                                     const Environment &env,
+                                     const FunctionDeclaration *decl) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  auto shallowCopy = env.shallowCopy();
+  auto sizeToAlloc =
+      totalSizeToAlloc<pair<StringRef, Memory *>>(shallowCopy.size());
+  auto *mem = new (context->alloc(sizeToAlloc))
+      FunctionValue(context, shallowCopy.size(), decl);
+  std::uninitialized_copy(shallowCopy.begin(), shallowCopy.end(),
+                          mem->getTrailingObjects<pair<StringRef, Memory *>>());
+  return mem;
 }
 
 void ValuePrintVisitor::visit(const FunctionValue &value) {
@@ -353,11 +345,6 @@ void ValuePrintVisitor::visit(const FunctionValue &value) {
 
 void ToBoolVisitor::visit(const FunctionValue &value) { result = nullopt; }
 
-void CloneVisitor::visit(const FunctionValue &value) {
-  result =
-      FunctionValue::create(value.getEnvironment(), value.getDeclaration());
-}
-
 void ValueEqVisitor::visit(const FunctionValue &l) {
   auto value = false;
   if (const auto *funcR = r->dyn_cast<FunctionValue>())
@@ -369,10 +356,17 @@ void ValueEqVisitor::visit(const FunctionValue &l) {
 /// LambdaValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<LambdaValue> LambdaValue::create(const Environment &env,
-                                             const LambdaExpression *decl) {
-  auto *mem = new (malloc(sizeof(LambdaValue))) LambdaValue(env, decl);
-  return UniqueValue<LambdaValue>(mem);
+LambdaValue *LambdaValue::create(MemoryContext *context, const Environment &env,
+                                 const LambdaExpression *decl) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  auto capture = env.capture(context);
+  auto sizeToAlloc =
+      totalSizeToAlloc<pair<StringRef, Memory *>>(capture.size());
+  auto *mem = new (context->alloc(sizeToAlloc))
+      LambdaValue(context, capture.size(), decl);
+  std::uninitialized_copy(capture.begin(), capture.end(),
+                          mem->getTrailingObjects<pair<StringRef, Memory *>>());
+  return mem;
 }
 
 void ValuePrintVisitor::visit(const LambdaValue &value) {
@@ -386,10 +380,6 @@ void ValuePrintVisitor::visit(const LambdaValue &value) {
 
 void ToBoolVisitor::visit(const LambdaValue &value) { result = nullopt; }
 
-void CloneVisitor::visit(const LambdaValue &value) {
-  result = LambdaValue::create(value.getEnvironment(), value.getExpression());
-}
-
 void ValueEqVisitor::visit(const LambdaValue &l) {
   auto value = false;
   if (const auto *lambdaR = r->dyn_cast<LambdaValue>())
@@ -401,25 +391,21 @@ void ValueEqVisitor::visit(const LambdaValue &l) {
 /// BuiltinFunctionValue
 //===----------------------------------------------------------------------===//
 
-UniqueValue<BuiltinFunctionValue>
-BuiltinFunctionValue::create(StringRef name, StringRef helpMsg,
-                             funcBodyType fn) {
-  auto *mem = new (malloc(sizeof(BuiltinFunctionValue)))
-      BuiltinFunctionValue(name, helpMsg, fn);
-  return UniqueValue<BuiltinFunctionValue>(mem);
+BuiltinFunctionValue *BuiltinFunctionValue::create(MemoryContext *context,
+                                                   StringRef name,
+                                                   StringRef helpMsg,
+                                                   funcBodyType fn) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  return new (context->alloc(sizeof(BuiltinFunctionValue)))
+      BuiltinFunctionValue(context, name, helpMsg, fn);
 }
 
 void ValuePrintVisitor::visit(const BuiltinFunctionValue &value) {
-  printer << "<builtin function" << '\'' << value.getName() << "'>";
+  printer << "<builtin function " << '\'' << value.getName() << "'>";
 }
 
 void ToBoolVisitor::visit(const BuiltinFunctionValue &value) {
   result = nullopt;
-}
-
-void CloneVisitor::visit(const BuiltinFunctionValue &value) {
-  result = BuiltinFunctionValue::create(value.getName(), value.getHelp(),
-                                        value.getFuncBody());
 }
 
 void ValueEqVisitor::visit(const BuiltinFunctionValue &l) {
