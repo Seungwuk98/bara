@@ -611,4 +611,103 @@ TEST(INTERPRETER_TEST_SUITE, ShrTest) {
   ASSERT_EQ(mixedVal2->cast<IntegerValue>()->getValue(), 4);
 }
 
+TEST(INTERPRETER_TEST_SUITE, LogicalTest) {
+  InterpreterTests tests;
+
+  auto boolVal = tests.eval("1 && 2");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal->isa<BoolValue>());
+  ASSERT_EQ(boolVal->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal2 = tests.eval("1 && 0");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal2->isa<BoolValue>());
+  ASSERT_EQ(boolVal2->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal3 = tests.eval("0 && 1");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal3->isa<BoolValue>());
+  ASSERT_EQ(boolVal3->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal4 = tests.eval("0 && 0");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal4->isa<BoolValue>());
+  ASSERT_EQ(boolVal4->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal5 = tests.eval("1 || 2");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal5->isa<BoolValue>());
+  ASSERT_EQ(boolVal5->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal6 = tests.eval("1 || 0");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal6->isa<BoolValue>());
+  ASSERT_EQ(boolVal6->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal7 = tests.eval("0 || 1");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal7->isa<BoolValue>());
+  ASSERT_EQ(boolVal7->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal8 = tests.eval("0 || 0");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal8->isa<BoolValue>());
+  ASSERT_EQ(boolVal8->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal9 = tests.eval("!1");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal9->isa<BoolValue>());
+  ASSERT_EQ(boolVal9->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal10 = tests.eval("!0");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal10->isa<BoolValue>());
+  ASSERT_EQ(boolVal10->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal11 = tests.eval("!true");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal11->isa<BoolValue>());
+  ASSERT_EQ(boolVal11->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal12 = tests.eval("!false");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal12->isa<BoolValue>());
+  ASSERT_EQ(boolVal12->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal13 = tests.eval("!!true");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal13->isa<BoolValue>());
+  ASSERT_EQ(boolVal13->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal14 = tests.eval("!!false");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal14->isa<BoolValue>());
+  ASSERT_EQ(boolVal14->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal15 = tests.eval("!!1");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal15->isa<BoolValue>());
+  ASSERT_EQ(boolVal15->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal16 = tests.eval("!!0");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal16->isa<BoolValue>());
+  ASSERT_EQ(boolVal16->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal17 = tests.eval("!\"\"");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal17->isa<BoolValue>());
+  ASSERT_EQ(boolVal17->cast<BoolValue>()->getValue(), true);
+
+  auto boolVal18 = tests.eval("!\"hello\"");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal18->isa<BoolValue>());
+  ASSERT_EQ(boolVal18->cast<BoolValue>()->getValue(), false);
+
+  auto boolVal19 = tests.eval("!!\"\"");
+  ASSERT_FALSE(tests.hasError());
+  ASSERT_TRUE(boolVal19->isa<BoolValue>());
+  ASSERT_EQ(boolVal19->cast<BoolValue>()->getValue(), false);
+}
+
 } // namespace bara

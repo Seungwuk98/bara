@@ -472,8 +472,8 @@ Expression *Parser::parseLogicalOrExpression() {
     auto *rhs = parseLogicalAndExpression();
     if (diag.hasError())
       return nullptr;
-    lhs = BinaryExpression::create(capture.create(), context, lhs,
-                                   Operator::And, rhs);
+    lhs = BinaryExpression::create(capture.create(), context, lhs, Operator::Or,
+                                   rhs);
   }
 
   return lhs;

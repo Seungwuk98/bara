@@ -161,8 +161,11 @@ DECL(len) {
       .Case([&](const TupleValue *tupleV) {
         return IntegerValue::create(context, tupleV->size());
       })
+      .Case([&](const StringValue *strV) {
+        return IntegerValue::create(context, strV->size());
+      })
       .Default([&](Value *) -> Value * {
-        report(range, diag, error_unexpected_type, "list or tuple",
+        report(range, diag, error_unexpected_type, "list or tuple or str",
                value->toString());
         return nullptr;
       });

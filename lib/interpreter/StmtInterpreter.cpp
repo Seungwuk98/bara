@@ -220,9 +220,10 @@ void StmtInterpreter::visit(const ContinueStatement &stmt) {
 void StmtInterpreter::visit(const ReturnStatement &stmt) {
   assert(!isTerminated() && "Already terminated");
   if (stmt.getExpr()) {
-    returnValue = rvInterpret(**stmt.getExpr()).getValue();
+    auto reg = rvInterpret(**stmt.getExpr());
     if (isTerminated())
       return;
+    returnValue = reg.getValue();
   }
   returnFlag = &stmt;
 }

@@ -1,0 +1,182 @@
+// RUN: bara %s -interpret | FileCheck %s
+
+fn hashValue(key) {
+  if type(key) == "int" || type(key) == "bool" {
+    return key * 31;
+  }
+  if type(key) == "str" {
+    var hash = 0;
+    for (var i = 0; i < len(key); i += 1) {
+      hash = hash * 31 + (+key[i]);
+    }
+    return hash;
+  }
+  print(type(key));
+  /// it will cause an error if the key is not int or str
+  return nil;
+}
+
+fn createHashTable() {
+  // prime numbers
+  var capacities = [11, 19, 37, 73, 149, 307, 617, 1237, 2473, 4951, 9907, 19891, 39769, 79589, 159191, 318781, 637573, 1275143, 2550181, 5100367, 10200737, 20401457];
+  var currCapacity = 0;
+  var table = [];
+  for (var i = 0; i < capacities[currCapacity]; i += 1) {
+    push(table, []);
+  }
+  var size = 0;
+
+  fn _insert(key, value) {
+    var index = hashValue(key) % len(table);
+    var bucket = table[index];
+    for (var i = 0; i < len(bucket); i += 1) {
+      if bucket[i][0] == key {
+        bucket[i][1] = value;
+        return false;
+      }
+    }
+    push(bucket, [key, value]);
+    size += 1;
+    return true;
+  }
+
+  fn grow() {
+    currCapacity += 1;
+    if (currCapacity == len(capacities)) {
+      return;
+    }
+    var newTable = [];
+    for (var i = 0; i < capacities[currCapacity]; i += 1) {
+      push(newTable, []);
+    }
+    var oldTable = table;
+    table = newTable;
+    size = 0;
+    for (var i = 0; i < len(oldTable); i += 1) {
+      var bucket = oldTable[i];
+      for (var j = 0; j < len(bucket); j += 1) {
+        if bucket[j] != nil {
+          _insert(bucket[j][0], bucket[j][1]);
+        }
+      }
+    }
+    table = newTable;
+  }
+
+  /// Insert a key-value pair into the hash table 
+  /// false => key already exists and value is updated 
+  /// true => key does not exist and a new key-value pair is inserted
+  fn insert(key, value) {
+    _insert(key, value); 
+    if size / len(table) > 2 {
+      grow();
+    }
+    return true;
+  }
+
+  /// Get the value of a key
+  fn get(key) {
+    var index = hashValue(key) % len(table);
+    var bucket = table[index];
+    for (var i = 0; i < len(bucket); i += 1) {
+      if bucket[i][0] == key {
+        return bucket[i][1];
+      }
+    }
+    return nil;
+  }
+
+  /// Remove a key-value pair from the hash table
+  fn remove(key) {
+    var index = hashValue(key) % len(table);
+    var bucket = table[index];
+    for (var i = 0; i < len(bucket); i += 1) {
+      if bucket[i][0] == key {
+        bucket[i] = nil;
+        size -= 1;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  fn getSize() {
+    return size;
+  }
+
+  return [
+    insert,
+    get,
+    remove,
+    getSize,
+  ];
+}
+
+fn htInsert(ht, key, value) {
+  return ht[0](key, value);
+}
+
+fn htGet(ht, key) {
+  return ht[1](key);
+}
+
+fn htRemove(ht, key) {
+  return ht[2](key);
+}
+
+fn htSize(ht) {
+  return ht[3]();
+}
+
+var ht = createHashTable();
+htInsert(ht, 1, "one");
+htInsert(ht, 2, "two");
+htInsert(ht, 3, "three");
+
+print(htSize(ht));
+// CHECK: 3
+
+print(htGet(ht, 1));
+// CHECK: one
+
+print(htGet(ht, 2));
+// CHECK: two
+
+print(htGet(ht, 3));
+// CHECK: three
+
+var ht2 = createHashTable();
+for (var idx = 0; idx < 100; idx += 1) {
+  htInsert(ht2, idx, "value" + str(idx));
+}
+
+print(htSize(ht2));
+// CHECK: 100
+
+print(htGet(ht2, 37));
+// CHECK: value37
+
+htInsert(ht2, 37, "new value 37");
+print(htGet(ht2, 37));
+// CHECK: new value 37 
+
+var ht3 = createHashTable(); 
+htInsert(ht3, "capybara", "cute");
+htInsert(ht3, "elephant", "big");
+htInsert(ht3, true, "boolean - true");
+htInsert(ht3, false, "boolean - false");
+
+print(htSize(ht3));
+// CHECK: 4 
+
+print(htGet(ht3, "capybara")); 
+// CHECK: cute 
+
+print(htGet(ht3, "elephant"));
+// CHECK: big
+
+print(htGet(ht3, true));
+// CHECK: boolean - true
+
+print(htGet(ht3, false));
+// CHECK: boolean - false

@@ -26,6 +26,9 @@ DIAG(error_invalid_expression_for_assignment,
      "Invalid expression for assignment. got ({0})", Error)
 DIAG(error_invalid_operand_for_unary_operator,
      "Invalid operand for unary operator({0}). got ({1})", Error)
+DIAG(error_invalid_operand_for_plus_operator_on_strint,
+     "Invalid operand for '+' operator which is longer than 1. got ({0})",
+     Error)
 DIAG(error_invalid_operand_for_binary_operator,
      "Invalid operand for binary operator({0}). got ({1}), ({2})", Error)
 DIAG(error_invalid_callee,

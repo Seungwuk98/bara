@@ -344,6 +344,19 @@ void RvExprInterpreter::visit(const UnaryExpression &expr) {
             result = context->getGC()->registerRoot(intV);
           }
         })
+        .Case([&](const StringValue *strV) {
+          if (strV->size() == 1) {
+            GCSAFE(context->getGC()) {
+              auto intV = IntegerValue::create(context, strV->getValue()[0]);
+              result = context->getGC()->registerRoot(intV);
+            }
+          } else {
+            stmtInterpreter->report(
+                expr.getRange(),
+                InterpretDiagnostic::error_invalid_operand_for_unary_operator,
+                strV->toString());
+          }
+        })
         .Default([this, expr](const Value *value) {
           stmtInterpreter->report(
               expr.getRange(),
@@ -385,8 +398,10 @@ void RvExprInterpreter::visit(const UnaryExpression &expr) {
           operatorToString(expr.getOperator()), operand.getValue()->toString());
       return;
     }
-    auto notV = BoolValue::create(context, !*boolOpt);
-    result = context->getGC()->registerRoot(notV);
+    GCSAFE(context->getGC()) {
+      auto notV = BoolValue::create(context, !*boolOpt);
+      result = context->getGC()->registerRoot(notV);
+    }
     return;
   }
 
