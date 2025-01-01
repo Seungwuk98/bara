@@ -116,7 +116,14 @@ def main():
                 totalMemory += time.memory
 
         print(f'Average Execution Time: {totalExecTime / iteration:.0f}ms')
-        print(f'Average Memory Usage: {totalMemory // iteration}KB')
+        memoryUnit = 'KB'
+        if totalMemory > 1024:
+            totalMemory //= 1024
+            memoryUnit = 'MB'
+            if totalMemory > 1024:
+                totalMemory //= 1024
+                memoryUnit = 'GB'
+        print(f'Average Memory Usage: {totalMemory}{memoryUnit}')
 
 
 if __name__ == '__main__':

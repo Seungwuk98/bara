@@ -21,7 +21,9 @@ function(add_algorithm algorithm)
 
   add_custom_target(
     ${test_name} 
-    COMMAND ${PYTHON} ${TEST_EXECUTION_PY}  
+    COMMAND  ${CMAKE_COMMAND} -E make_directory ${case_output_dir}/output/
+             &&
+             ${PYTHON} ${TEST_EXECUTION_PY}  
              --case-dir=${case_output_dir} 
              --bara-interpreter=$<TARGET_FILE:bara> 
              --bara-file=${ALG_BARA} 

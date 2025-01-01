@@ -134,6 +134,14 @@ void GC::collect() {
   roots = std::move(newRoots);
 
   release();
+  /// update threshold
+  /// After GC, if the unreleased memory is more than 90% of the threshold,
+  /// double the threshold.
+  /// This is to avoid frequent GC and increase memory usage.
+  /// 90% is an empirical number.
+  while (context->gcThreshold < (context->totalAllocated * 10 / 9)) {
+    context->gcThreshold <<= 1;
+  }
 }
 
 void GC::release() {

@@ -39,8 +39,6 @@ GCTarget *MemoryContext::alloc(size_t size) {
   auto *ptr = static_cast<GCTarget *>(llvm::safe_malloc(size));
   totalAllocated += size;
   if (totalAllocated >= gcThreshold) {
-    while (totalAllocated >= gcThreshold)
-      gcThreshold <<= 1;
     gc->trigger();
   }
   allocations.emplace_back(ptr, size);

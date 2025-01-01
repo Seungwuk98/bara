@@ -1,8 +1,6 @@
 add_executable("test-sort_answer" sol.cpp)
 add_executable("test-sort_checker" checker.cpp)
 
-
-
 generator(
   "sort"
   NAME "gen_sort"
