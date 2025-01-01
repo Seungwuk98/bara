@@ -116,6 +116,5 @@ endfunction()
 
 
 add_subdirectory(MST)
-add_subdirectory(PrefixSum)
 add_subdirectory(Sort)
 

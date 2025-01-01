@@ -1,0 +1,42 @@
+// RUN: bara %s -interpret | FileCheck %s
+
+
+fn out() {
+  fn in() {
+    print("in");
+  }
+  in();
+}
+
+out();
+// CHECK: in
+
+fn out2() {
+  var x = 0;
+  fn in() {
+    x += 1;
+  }
+  in();
+  in();
+  return x;
+}
+
+print(out2());
+// CHECK: 2
+
+
+fn out3() {
+  var x = 0;
+  fn in() {
+    x += 1;
+    return x;
+  }
+  return in;
+}
+
+var out3_in = out3();
+print(out3_in());
+// CHECK: 1
+
+print(out3_in());
+// CHECK: 2
