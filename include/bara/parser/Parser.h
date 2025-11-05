@@ -160,6 +160,11 @@ private:
   /// IdentifierExpression ::= Identifier
   IdentifierExpression *parseIdentifierExpression();
 
+  AST *parseStatementAllowedExpression();
+
+  /// CompoundExpression ::= '{' Statement* Expression '}'
+  CompoundExpression *parseCompoundExpression();
+
   /// TupleExpression ::=
   ///   '(' Expression? ',' ')'
   ///   | '(' Expression (',' Expression)+ ','? ')'

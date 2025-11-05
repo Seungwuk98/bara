@@ -1163,6 +1163,51 @@ void ASTEqualVisitor::visit(const GroupExpression &other) {
 }
 
 //===----------------------------------------------------------------------===//
+/// CompoundExpression
+//===----------------------------------------------------------------------===//
+
+CompoundExpression *CompoundExpression::create(SMRange range,
+                                               ASTContext *context,
+                                               ArrayRef<Statement *> stmts,
+                                               Expression *expr) {
+  auto allocSize = totalSizeToAlloc<Statement *>(stmts.size());
+  void *mem = context->alloc(allocSize);
+  auto *compoundExpr = new (mem) CompoundExpression(range, expr, stmts.size());
+  std::uninitialized_copy(stmts.begin(), stmts.end(),
+                          compoundExpr->getTrailingObjects<Statement *>());
+  return compoundExpr;
+}
+
+void ASTPrintVisitor::visit(const CompoundExpression &ast) {
+  printer << "{";
+  {
+    ASTPrinter::AddIndentScope scope(printer);
+    for (auto stmt : ast.getStmts()) {
+      printer.ln();
+      stmt->accept(*this);
+    }
+    printer.ln();
+    ast.getExpr()->accept(*this);
+  }
+  printer.ln() << "}";
+}
+
+void ASTEqualVisitor::visit(const CompoundExpression &other) {
+  if (!thisAST->isa<CompoundExpression>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisExpr = thisAST->cast<CompoundExpression>();
+  if (!isEqualASTArray<Statement *>(thisExpr->getStmts(), other.getStmts())) {
+    equal = false;
+    return;
+  }
+
+  equal = thisExpr->getExpr()->isEqual(other.getExpr());
+}
+
+//===----------------------------------------------------------------------===//
 /// IntegerLiteral
 //===----------------------------------------------------------------------===//
 

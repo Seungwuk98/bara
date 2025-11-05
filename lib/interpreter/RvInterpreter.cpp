@@ -665,6 +665,17 @@ void RvExprInterpreter::visit(const GroupExpression &expr) {
   expr.getExpr()->accept(*this);
 }
 
+void RvExprInterpreter::visit(const CompoundExpression &expr) {
+  Environment::Scope scope(getCurrEnv());
+  for (auto *subStmt : expr.getStmts()) {
+    subStmt->accept(*stmtInterpreter);
+    if (diag.hasError())
+      return;
+  }
+  // The result of a compound expression is the result of its last expression
+  expr.getExpr()->accept(*this);
+}
+
 void RvExprInterpreter::visit(const IntegerLiteral &expr) {
   if (expr.getValue() >=
       static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {

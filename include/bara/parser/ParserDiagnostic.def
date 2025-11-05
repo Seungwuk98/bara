@@ -7,5 +7,8 @@ DIAG(error_unexpected_token, "Unexpected token. expect: ({0}), got: ({1})",
 DIAG(error_unparsable_token, "Unparsable token for '{0}'. got: ({1})", Error)
 DIAG(error_unchangable_expression_to_pattern_ast,
      "Correspond ast can't be pattern.", Error)
+DIAG(error_unvalued_compound_expression, "Compound expression has no value.",
+     Error)
+DIAG(error_expect_token, "Expect token: ({0}).", Error)
 
 #undef DIAG

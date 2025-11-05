@@ -449,12 +449,12 @@ public:
   }
 
 private:
-  string name;
+  StringRef name;
   size_t paramSize;
   size_t bodySize;
 };
 
-/// MatchExpression ::= 'match' '(' Expression ')' '{' MatchCase* '}'
+/// MatchExpression ::= 'match' Expression '{' MatchCase* '}'
 /// MatchCase ::= '\' Pattern '=>' Expression ';'
 class MatchExpression final
     : public ASTBase<MatchExpression, Expression>,
@@ -698,6 +698,30 @@ private:
   Expression *expr;
 };
 
+/// CompoundExpression ::= '{' Statement* Expression '}'
+class CompoundExpression final
+    : public ASTBase<CompoundExpression, Expression>,
+      public TrailingObjects<CompoundExpression, Statement *> {
+  CompoundExpression(SMRange range, Expression *expr, size_t stmtSize)
+      : ASTBase(range, ASTKind::CompoundExpression), expr(expr),
+        stmtSize(stmtSize) {}
+
+public:
+  static CompoundExpression *create(SMRange range, ASTContext *context,
+                                    ArrayRef<Statement *> stmts,
+                                    Expression *expr);
+
+  Expression *getExpr() const { return expr; }
+  size_t getStmtSize() const { return stmtSize; }
+  ArrayRef<Statement *> getStmts() const {
+    return {getTrailingObjects<Statement *>(), stmtSize};
+  }
+
+private:
+  Expression *expr;
+  size_t stmtSize;
+};
+
 /// IntegerLiteral
 class IntegerLiteral final : public ASTBase<IntegerLiteral, Expression> {
   friend class ASTContext;
@@ -742,7 +766,7 @@ public:
   StringRef getValue() const { return value; }
 
 private:
-  string value;
+  StringRef value;
 };
 
 /// StringLiteral
@@ -758,7 +782,7 @@ public:
   StringRef getValue() const { return value; }
 
 private:
-  string value;
+  StringRef value;
 };
 
 /// NilLiteral ::= 'nil'

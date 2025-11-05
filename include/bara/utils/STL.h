@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -19,4 +20,7 @@ using std::vector;
 using std::function;
 using std::uint16_t;
 using std::uint64_t;
+
+using std::make_unique;
+using std::unique_ptr;
 } // namespace bara

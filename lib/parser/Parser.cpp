@@ -1,5 +1,6 @@
 #include "bara/parser/Parser.h"
 #include "bara/ast/AST.h"
+#include "bara/diagnostic/Diagnostic.h"
 #include "llvm/Support/ErrorHandling.h"
 
 namespace bara {
@@ -19,6 +20,20 @@ Program *Parser::parseProgram() {
 }
 
 Statement *Parser::parseStatement() {
+  auto *stmtOrExpr = parseStatementAllowedExpression();
+  if (diag.hasError())
+    return nullptr;
+
+  if (auto *stmt = dyn_cast<Statement>(stmtOrExpr))
+    return stmt;
+
+  report({stmtOrExpr->getRange().End, stmtOrExpr->getRange().End},
+         ParseDiagnostic::error_expect_token, "semicolon(';')");
+
+  return nullptr;
+}
+
+AST *Parser::parseStatementAllowedExpression() {
   auto *peekTok = peek();
   switch (peekTok->getKind()) {
   case Token::Tok_LBrace:
@@ -68,9 +83,7 @@ Statement *Parser::parseStatement() {
     case Token::Tok_CaretEqual:
       return parseOperatorAssignmentStatement(expr);
     default:
-      report(peekTok->getRange(), ParseDiagnostic::error_unparsable_token,
-             "statement", Token::getTokenString(peekTok->getKind()));
-      return nullptr;
+      return expr;
     }
   }
 }
@@ -742,6 +755,8 @@ Expression *Parser::parsePrimaryExpression() {
     return parseLambdaExpression();
   case Token::Tok_nil:
     return parseNilLiteral();
+  case Token::Tok_LBrace:
+    return parseCompoundExpression();
   default:
     report(peekTok->getRange(), ParseDiagnostic::error_unparsable_token,
            "primary expression", Token::getTokenString(peekTok->getKind()));
@@ -840,6 +855,41 @@ IdentifierExpression *Parser::parseIdentifierExpression() {
     return nullptr;
   return IdentifierExpression::create(identTok->getRange(), context,
                                       identTok->getSymbol());
+}
+
+CompoundExpression *Parser::parseCompoundExpression() {
+  RangeCapture capture(*this);
+  if (consume<Token::Tok_LBrace>())
+    return nullptr;
+
+  vector<Statement *> stmts;
+  Expression *expr = nullptr;
+  while (!peekIs<Token::Tok_RBrace, Token::Tok_Eof>()) {
+    auto *stmtOrExpr = parseStatementAllowedExpression();
+    if (diag.hasError()) {
+      commonRecovery();
+      return nullptr;
+    }
+    if (auto *stmt = dyn_cast<Statement>(stmtOrExpr)) {
+      stmts.emplace_back(stmt);
+    } else if (auto *expression = dyn_cast<Expression>(stmtOrExpr)) {
+      expr = expression;
+      break;
+    } else {
+      llvm_unreachable("Expected Statement or Expression");
+    }
+  }
+
+  if (!expr) {
+    report(capture.create(),
+           ParseDiagnostic::error_unvalued_compound_expression);
+    return nullptr;
+  }
+
+  if (consume<Token::Tok_RBrace>())
+    return nullptr;
+
+  return CompoundExpression::create(capture.create(), context, stmts, expr);
 }
 
 Expression *Parser::parseTupleOrGroupExpression() {
