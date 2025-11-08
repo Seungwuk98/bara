@@ -36,6 +36,10 @@ DIAG(error_invalid_callee,
 DIAG(error_invalid_argument_size,
      "Invalid argument size. expected({0}), got({1})", Error)
 DIAG(error_unmatched_pattern, "Unmatched pattern error. got ({0})", Error)
+DIAG(error_expected_struct, "Expected struct value for access. got ({0})",
+     Error)
+DIAG(error_unknown_struct_field, "Unknown struct field '{0}' in struct '{1}'",
+     Error)
 
 DIAG(warning_integer_overflow, "Integer literal is overflowed", Warning)
 

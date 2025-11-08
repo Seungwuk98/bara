@@ -162,6 +162,8 @@ void Lexer::lex() {
   
   case ',':
     kind = Token::Tok_Comma;      return;
+  case '.':
+    kind = Token::Tok_Dot;        return;
   case ';':
     kind = Token::Tok_Semicolon;  return;
   case '{':

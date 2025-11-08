@@ -35,11 +35,14 @@ public:
   Statement *parseStatement();
 
 private:
-  /// Program ::= Statement*
+  /// Program ::= (Statement | StructDeclaration) *
   Program *parseProgram();
 
+  /// StructDeclaration ::= 'struct' Identifier '{' FieldList ? '}'
+  StructDeclaration *parseStructDeclaration();
+
   /// CompoundStatement ::= '{' Statement* '}'
-  CompoundStatement *parseCompoundStatement();
+  vector<Statement *> parseCompoundStatement();
 
   /// IfStatement ::=
   ///   'if' Expression '{' Statement* '}' ('else' '{' Statement '}')?
@@ -74,27 +77,22 @@ private:
   /// DeclarationStatement ::= 'var' Pattern ('=' Expression)? ';'
   DeclarationStatement *parseDeclarationStatement();
 
-  /// AssignmentStatement ::= Pattern '=' Expression ';'
-  AssignmentStatement *parseAssignmentStatement(Expression *lhs);
-
-  /// OperatorAssignmentStatement ::= Identifier | IndexExpression
-  ///       (
-  ///         '+=' | '-=' | '*=' | '/=' | '%='
-  ///         | '<<=' | '>>=' | '&=' | '|=' | '^='
-  ///       ) Expression ';'
-  OperatorAssignmentStatement *
-  parseOperatorAssignmentStatement(Expression *rhs);
-
   /// FunctionDeclaration ::=
   ///   'fn' Identifier '(' ParameterList? ')' '{' Statement* '}'
   /// ParameterList ::= Parameter (',' Parameter)*
   /// Parameter ::= Pattern
   FunctionDeclaration *parseFunctionDeclaration();
 
-  /// ConditionalExpression ::=
+  /// CondOrAssignExpression ::=
   ///   LogicalOrExpression
-  ///     ('?' ConditionalExpression ':' ConditionalExpression)?
-  Expression *parseConditionalExpression();
+  ///   (
+  ///     ('?' CondOrAssignExpression':' CondExpression)
+  ///     | ('=' | '+=' | '-=' | '*=' | '/=' | '%=' | '<<=' | '>>=' | '&=' |
+  ///     '|=' | '^=' ) CondOrAssignExpression
+  ///   )?
+  /// AssignmentExpression ::=
+  ///
+  Expression *parseConditionalOrAssignExpression();
 
   /// LogicalOrExpression ::= LogicalAndExpression ('||' LogicalAndExpression)*
   Expression *parseLogicalOrExpression();
@@ -131,9 +129,9 @@ private:
   ///   | CallOrIndexExpression
   Expression *parseUnaryExpression();
 
-  /// CallOrIndexExpression ::=
+  /// CallOrAccessExpression ::=
   ///   PrimaryExpression (('(' ArgumentList? ')') | ('[' Expression ']')) *
-  Expression *parseCallOrIndexExpression();
+  Expression *parseCallOrAccessExpression();
 
   /// PrimaryExpression ::=
   ///   IdentifierExpression
@@ -182,11 +180,11 @@ private:
   NilLiteral *parseNilLiteral();
 
   /// Pattern ::= IdentifierPattern | TuplePattern | IntegerPattern |
-  /// FloatPattern | StringPattern | GroupPattern | EmptyPattern
+  /// FloatPattern | StringPattern | GroupPattern | EmptyPattern | StructPattern
   Pattern *parsePattern();
 
   /// IdentifierPattern ::= Identifier
-  Pattern *parseIdentifierPattern();
+  Pattern *parseIdentifierOrStructPattern();
 
   /// TuplePattern ::=
   ///   '(' Pattern? ',' ')'

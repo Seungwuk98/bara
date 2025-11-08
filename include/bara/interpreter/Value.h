@@ -282,13 +282,13 @@ private:
 };
 
 class BuiltinFunctionValue final : public Value {
-  using funcBodyType = llvm::function_ref<Value *(
-      ArrayRef<Value *>, Diagnostic &, SMRange, MemoryContext *)>;
+  using funcBodyType = std::function<Value *(ArrayRef<Value *>, Diagnostic &,
+                                             SMRange, MemoryContext *)>;
 
   BuiltinFunctionValue(MemoryContext *context, StringRef name,
                        StringRef helpMsg, funcBodyType func)
       : Value(context, ValueKind::BuiltinFunction), name(name),
-        helpMsg(helpMsg), func(func) {}
+        helpMsg(helpMsg), func(std::move(func)) {}
 
 public:
   static bool classof(const Value *value) {
@@ -307,6 +307,32 @@ private:
   StringRef name;
   StringRef helpMsg;
   funcBodyType func;
+};
+
+class StructValue final : public Value,
+                          public TrailingObjects<StructValue, Memory *> {
+  friend class ValueEraser;
+  StructValue(MemoryContext *context, size_t memberLength,
+              const StructDeclaration *decl)
+      : Value(context, ValueKind::Struct), memberLength(memberLength),
+        decl(decl) {}
+
+public:
+  static bool classof(const Value *value) {
+    return value->getKind() == ValueKind::Struct;
+  }
+
+  static StructValue *create(MemoryContext *ctx, const StructDeclaration *decl,
+                             ArrayRef<Value *> values);
+
+  const StructDeclaration *getDeclaration() const { return decl; }
+  ArrayRef<Memory *> getMembers() const {
+    return {getTrailingObjects<Memory *>(), memberLength};
+  }
+
+private:
+  size_t memberLength;
+  const StructDeclaration *decl;
 };
 
 } // namespace bara

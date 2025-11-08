@@ -3,7 +3,7 @@
 #endif
 
 STATEMENT(Program)
-STATEMENT(CompoundStatement)
+STATEMENT(StructDeclaration)
 STATEMENT(ExpressionStatement)
 STATEMENT(IfStatement)
 STATEMENT(WhileStatement)
@@ -12,8 +12,6 @@ STATEMENT(BreakStatement)
 STATEMENT(ContinueStatement)
 STATEMENT(ReturnStatement)
 STATEMENT(DeclarationStatement)
-STATEMENT(AssignmentStatement)
-STATEMENT(OperatorAssignmentStatement)
 STATEMENT(FunctionDeclaration)
 
 #undef STATEMENT

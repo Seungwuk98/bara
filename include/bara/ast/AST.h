@@ -5,6 +5,7 @@
 #include "bara/utils/LLVM.h"
 #include "bara/utils/STL.h"
 #include "bara/utils/VisitorBase.h"
+#include "llvm/Support/TrailingObjects.h"
 
 namespace bara {
 class AST;
@@ -161,7 +162,7 @@ enum class Operator {
 void printOperator(raw_ostream &os, Operator op);
 string operatorToString(Operator op);
 
-/// Program ::= Statement*
+/// Program ::= (Statement | StructDeclaration)*
 class Program final : public ASTBase<Program, AST>,
                       public TrailingObjects<Program, Statement *> {
   Program(SMRange range, size_t size)
@@ -182,26 +183,28 @@ private:
   size_t size;
 };
 
-/// CompoundStatement ::= '{' Statement* '}'
-class CompoundStatement final
-    : public ASTBase<CompoundStatement, Statement>,
-      public TrailingObjects<CompoundStatement, Statement *> {
-  CompoundStatement(SMRange range, size_t size)
-      : ASTBase(range, ASTKind::CompoundStatement), size(size) {}
+/// StructDeclaration ::=
+///  'struct' Identifier '(' FieldList ? ')' ';'
+class StructDeclaration final
+    : public ASTBase<StructDeclaration, Statement>,
+      public TrailingObjects<StructDeclaration, StringRef> {
+  StructDeclaration(SMRange range, StringRef name, size_t fieldSize)
+      : ASTBase(range, ASTKind::StructDeclaration), name(name),
+        fieldSize(fieldSize) {}
 
 public:
-  static CompoundStatement *create(SMRange range, ASTContext *context,
-                                   ArrayRef<Statement *> statements);
-
-  size_t getSize() const { return size; }
-  ArrayRef<Statement *> getStmts() const {
-    return {getTrailingObjects<Statement *>(), size};
+  static StructDeclaration *create(SMRange range, ASTContext *context,
+                                   StringRef name,
+                                   ArrayRef<StringRef> fieldNames);
+  size_t getFieldSize() const { return fieldSize; }
+  StringRef getName() const { return name; }
+  ArrayRef<StringRef> getFieldNames() const {
+    return {getTrailingObjects<StringRef>(), fieldSize};
   }
-  auto begin() const { return getStmts().begin(); }
-  auto end() const { return getStmts().end(); }
 
 private:
-  size_t size;
+  StringRef name;
+  size_t fieldSize;
 };
 
 /// ExpressionStatement ::= Expression ';'
@@ -223,94 +226,103 @@ private:
 /// IfStatement ::=
 ///   'if' Expression '{' Statement* '}' ('else' '{' Statement* '}')?
 ///   | 'if' Expression '{' Statement* '}' 'else' IfStatement
-class IfStatement final : public ASTBase<IfStatement, Statement> {
+class IfStatement final : public ASTBase<IfStatement, Statement>,
+                          public TrailingObjects<IfStatement, Statement *> {
   friend class ASTContext;
-  IfStatement(SMRange range, Expression *cond, CompoundStatement *thenStmt,
-              optional<Statement *> elseStmt)
-      : ASTBase(range, ASTKind::IfStatement), cond(cond), thenStmt(thenStmt),
-        elseStmt(elseStmt) {}
+  IfStatement(SMRange range, Expression *cond, size_t thenSize,
+              optional<size_t> elseSize, bool isElseIf)
+      : ASTBase(range, ASTKind::IfStatement), cond(cond), thenSize(thenSize),
+        elseSize(elseSize), isElseIf(isElseIf) {
+    assert(!isElseIf || (elseSize.has_value() && *elseSize == 1));
+  }
 
 public:
   static IfStatement *create(SMRange range, ASTContext *context,
-                             Expression *cond, CompoundStatement *thenStmt,
-                             CompoundStatement *elseStmt);
+                             Expression *cond, ArrayRef<Statement *> thenStmt,
+                             optional<ArrayRef<Statement *>> elseStmt);
 
   static IfStatement *create(SMRange range, ASTContext *context,
-                             Expression *cond, CompoundStatement *thenStmt,
+                             Expression *cond, ArrayRef<Statement *> thenStmt,
                              IfStatement *elseStmt);
 
-  static IfStatement *create(SMRange range, ASTContext *context,
-                             Expression *cond, CompoundStatement *thenStmt);
-
   Expression *getCond() const { return cond; }
-  CompoundStatement *getThenStmt() const { return thenStmt; }
-  bool hasElse() const { return elseStmt.has_value(); }
-  Statement *getElseStmt() const {
+  ArrayRef<Statement *> getThenStmt() const {
+    return {getTrailingObjects<Statement *>(), thenSize};
+  }
+  bool hasElse() const { return elseSize.has_value(); }
+  bool isElseIfStmt() const { return isElseIf; }
+  ArrayRef<Statement *> getElseStmt() const {
     assert(hasElse());
-    return *elseStmt;
+    return {getTrailingObjects<Statement *>() + thenSize, *elseSize};
   }
 
 private:
   Expression *cond;
-  CompoundStatement *thenStmt;
-  optional<Statement *> elseStmt;
+  size_t thenSize;
+  optional<size_t> elseSize;
+  bool isElseIf;
 };
 
 /// WhileStatement ::= 'while' Expression '{' Statement* '}'
-class WhileStatement final : public ASTBase<WhileStatement, Statement> {
+class WhileStatement final
+    : public ASTBase<WhileStatement, Statement>,
+      public TrailingObjects<WhileStatement, Statement *> {
   friend class ASTContext;
-  WhileStatement(SMRange range, Expression *cond, CompoundStatement *body,
+  WhileStatement(SMRange range, Expression *cond, size_t bodySize,
                  bool isDoWhile)
-      : ASTBase(range, ASTKind::WhileStatement), cond(cond), body(body),
+      : ASTBase(range, ASTKind::WhileStatement), cond(cond), bodySize(bodySize),
         doWhile(isDoWhile) {}
 
 public:
   static WhileStatement *create(SMRange range, ASTContext *context,
-                                Expression *cond, CompoundStatement *body,
+                                Expression *cond, ArrayRef<Statement *> body,
                                 bool isDoWhile = false);
 
   Expression *getCond() const { return cond; }
-  CompoundStatement *getBody() const { return body; }
+  ArrayRef<Statement *> getBody() const {
+    return {getTrailingObjects<Statement *>(), bodySize};
+  }
   bool isDoWhile() const { return doWhile; }
 
 private:
   Expression *cond;
-  CompoundStatement *body;
+  size_t bodySize;
   bool doWhile;
 };
 
 /// ForStatement ::=
-/// 'for' '(' Declaration? ';' Expression? ';' Assignment | CompoundStatement
+/// 'for' '(' Declaration? ';' Expression? ';' Expression?
 /// ')' '{' Statement* '}'
 /// Declaration ::= 'var' Pattern ('=' Expression)?
-/// Assignment ::= Pattern
-///   (
-///     '=' | '+=' | '-=' | '*=' | '/=' | '%='
-///     | '<<=' | '>>=' | '&=' | '|=' | '^='
-///   ) Expression
-class ForStatement final : public ASTBase<ForStatement, Statement>,
-                           public TrailingObjects<ForStatement, Statement *> {
-  ForStatement(SMRange range, bool hasDecl, optional<Expression *> cond,
-               bool hasStep)
-      : ASTBase(range, ASTKind::ForStatement), hasDecl(hasDecl), cond(cond),
-        hasStep(hasStep) {}
+class ForStatement final
+    : public ASTBase<ForStatement, Statement>,
+      public TrailingObjects<ForStatement, Expression *, Statement *> {
+  ForStatement(SMRange range, bool hasDecl, bool hasCond, bool hasStep,
+               size_t bodySize)
+      : ASTBase(range, ASTKind::ForStatement), hasDecl(hasDecl),
+        hasCond(hasCond), hasStep(hasStep), bodySize(bodySize) {}
 
 public:
+  size_t numTrailingObjects(OverloadToken<Expression *>) const {
+    return static_cast<size_t>(hasCond) + hasStep;
+  }
+
   static ForStatement *create(SMRange range, ASTContext *context,
                               optional<Statement *> decl,
                               optional<Expression *> cond,
-                              optional<Statement *> step,
-                              CompoundStatement *body);
+                              optional<Expression *> step,
+                              ArrayRef<Statement *> body);
 
   optional<DeclarationStatement *> getDecl() const;
   optional<Expression *> getCond() const;
-  optional<Statement *> getStep() const;
-  CompoundStatement *getBody() const;
+  optional<Expression *> getStep() const;
+  ArrayRef<Statement *> getBody() const;
 
 private:
   bool hasDecl;
-  optional<Expression *> cond;
+  bool hasCond;
   bool hasStep;
+  size_t bodySize;
 };
 
 /// BreakStatement ::= 'break' ';'
@@ -370,53 +382,6 @@ private:
   optional<Expression *> init;
 };
 
-/// AssignmentStatement ::= Expression '=' Expression ';'
-class AssignmentStatement final
-    : public ASTBase<AssignmentStatement, Statement> {
-  friend class ASTContext;
-  AssignmentStatement(SMRange range, Expression *lhs, Expression *rhs)
-      : ASTBase(range, ASTKind::AssignmentStatement), lhs(lhs), rhs(rhs) {}
-
-public:
-  static AssignmentStatement *create(SMRange range, ASTContext *context,
-                                     Expression *lhs, Expression *rhs);
-
-  Expression *getLhs() const { return lhs; }
-  Expression *getRhs() const { return rhs; }
-
-private:
-  Expression *lhs;
-  Expression *rhs;
-};
-
-/// OperatorAssignmentStatement ::= Identifier | IndexExpression
-///       (
-///         '+=' | '-=' | '*=' | '/=' | '%='
-///         | '<<=' | '>>=' | '&=' | '|=' | '^='
-///       ) Expression ';'
-class OperatorAssignmentStatement final
-    : public ASTBase<OperatorAssignmentStatement, Statement> {
-  friend class ASTContext;
-  OperatorAssignmentStatement(SMRange range, Expression *lhs, Operator op,
-                              Expression *rhs)
-      : ASTBase(range, ASTKind::OperatorAssignmentStatement), lhs(lhs), op(op),
-        rhs(rhs) {}
-
-public:
-  static OperatorAssignmentStatement *create(SMRange range, ASTContext *context,
-                                             Expression *lhs, Operator op,
-                                             Expression *rhs);
-
-  Expression *getLhs() const { return lhs; }
-  Operator getOperator() const { return op; }
-  Expression *getRhs() const { return rhs; }
-
-private:
-  Expression *lhs;
-  Operator op;
-  Expression *rhs;
-};
-
 /// FunctionDeclaration ::=
 ///   'fn' Identifier '(' ParameterList? ')' '{' Statement* '}'
 /// ParameterList ::= Identifier (',' Identifier)*
@@ -455,7 +420,7 @@ private:
 };
 
 /// MatchExpression ::= 'match' Expression '{' MatchCase* '}'
-/// MatchCase ::= '\' Pattern '=>' Expression ';'
+/// MatchCase ::= Pattern '=>' Expression ';'
 class MatchExpression final
     : public ASTBase<MatchExpression, Expression>,
       public TrailingObjects<MatchExpression,
@@ -481,14 +446,14 @@ private:
 };
 
 /// LambdaExpression ::=
-///   '\' ParamList? '=>' (Expression | '{' Statement* '}')
+///   '\' ParamList? '=>' Expression
 class LambdaExpression final
     : public ASTBase<LambdaExpression, Expression>,
       public TrailingObjects<LambdaExpression, StringRef> {
   friend class ASTContext;
   friend class TrailingObjects;
 
-  LambdaExpression(SMRange range, size_t paramSize, AST *body)
+  LambdaExpression(SMRange range, size_t paramSize, Expression *body)
       : ASTBase(range, ASTKind::LambdaExpression), paramSize(paramSize),
         body(body) {}
 
@@ -496,21 +461,35 @@ public:
   static LambdaExpression *create(SMRange range, ASTContext *context,
                                   ArrayRef<StringRef> params, Expression *expr);
 
-  static LambdaExpression *create(SMRange range, ASTContext *context,
-                                  ArrayRef<StringRef> params,
-                                  CompoundStatement *body);
-
   size_t getParamSize() const { return paramSize; }
-  bool isExprBody() const { return body->isa<Expression>(); }
   ArrayRef<StringRef> getParams() const {
     return {getTrailingObjects<StringRef>(), paramSize};
   }
   Expression *getExprBody() const;
-  CompoundStatement *getStmtBody() const;
 
 private:
   size_t paramSize;
   AST *body;
+};
+
+/// StructAccess ::= Expression '.' Identifier
+class StructAccessExpression final
+    : public ASTBase<StructAccessExpression, Expression> {
+  friend class ASTContext;
+  StructAccessExpression(SMRange range, Expression *base, StringRef fieldName)
+      : ASTBase(range, ASTKind::StructAccessExpression), base(base),
+        fieldName(fieldName) {}
+
+public:
+  static StructAccessExpression *create(SMRange range, ASTContext *context,
+                                        Expression *base, StringRef fieldName);
+
+  Expression *getBase() const { return base; }
+  StringRef getFieldName() const { return fieldName; }
+
+private:
+  Expression *base;
+  StringRef fieldName;
 };
 
 /// BinaryExpression ::= Expression BinaryOperator Expression
@@ -533,6 +512,34 @@ public:
 private:
   Expression *lhs;
   Operator op;
+  Expression *rhs;
+};
+
+/// AssignmentExpression ::= Identifier | IndexExpression
+///       (
+///         '=' | '+=' | '-=' | '*=' | '/=' | '%='
+///         | '<<=' | '>>=' | '&=' | '|=' | '^='
+///       ) Expression ';'
+class AssignmentExpression final
+    : public ASTBase<AssignmentExpression, Expression> {
+  friend class ASTContext;
+  AssignmentExpression(SMRange range, Expression *lhs, optional<Operator> op,
+                       Expression *rhs)
+      : ASTBase(range, ASTKind::AssignmentExpression), lhs(lhs), op(op),
+        rhs(rhs) {}
+
+public:
+  static AssignmentExpression *create(SMRange range, ASTContext *context,
+                                      Expression *lhs, optional<Operator> op,
+                                      Expression *rhs);
+
+  Expression *getLhs() const { return lhs; }
+  optional<Operator> getOperator() const { return op; }
+  Expression *getRhs() const { return rhs; }
+
+private:
+  Expression *lhs;
+  optional<Operator> op;
   Expression *rhs;
 };
 
@@ -922,6 +929,33 @@ class NilPattern final : public ASTBase<NilPattern, Pattern> {
 
 public:
   static NilPattern *create(SMRange range, ASTContext *context);
+};
+
+// StructPattern ::= Identifier '(' ('ref'? field (':' Pattern)? )* ')'
+class StructPattern final
+    : public ASTBase<StructPattern, Pattern>,
+      public TrailingObjects<StructPattern,
+                             std::tuple<bool, StringRef, Pattern *>> {
+  friend class ASTContext;
+  StructPattern(SMRange range, StringRef name, size_t fieldSize)
+      : ASTBase(range, ASTKind::StructPattern), name(name),
+        fieldSize(fieldSize) {}
+
+public:
+  using Field = std::tuple<bool, StringRef, Pattern *>;
+
+  StringRef getName() const { return name; }
+  size_t getFieldSize() const { return fieldSize; }
+  ArrayRef<Field> getFields() const {
+    return {getTrailingObjects<Field>(), fieldSize};
+  }
+
+  static StructPattern *create(SMRange range, ASTContext *context,
+                               StringRef name, ArrayRef<Field> fields);
+
+private:
+  StringRef name;
+  size_t fieldSize;
 };
 
 } // namespace bara

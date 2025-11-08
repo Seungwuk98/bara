@@ -1,5 +1,6 @@
 #include "bara/interpreter/StmtInterpreter.h"
 #include "bara/ast/AST.h"
+#include "bara/context/MemoryContext.h"
 #include "bara/interpreter/ExprInterpreter.h"
 #include "bara/interpreter/Memory.h"
 #include "bara/interpreter/Value.h"
@@ -63,11 +64,53 @@ void StmtInterpreter::visit(const Program &stmt) {
   }
 }
 
-void StmtInterpreter::visit(const CompoundStatement &stmt) {
-  Environment::Scope scope(getCurrEnv());
-  for (const auto &decl : stmt.getStmts()) {
-    decl->accept(*this);
-    if (isTerminated())
+void StmtInterpreter::visit(const StructDeclaration &stmt) {
+  auto structName = stmt.getName();
+
+  if (getCurrEnv().isDefinedCurrScope(structName)) {
+    report(stmt.getRange(), InterpretDiagnostic::error_redefinition_in_scope,
+           structName);
+    return;
+  }
+
+  GCSAFE(context->getGC()) {
+    auto *structConV = BuiltinFunctionValue::create(
+        context, structName, "Struct Constructor",
+        [&](ArrayRef<Value *> args, Diagnostic &diag, SMRange range,
+            MemoryContext *context) -> Value * {
+          if (args.size() != stmt.getFieldSize()) {
+            diag.report(
+                range, llvm::SourceMgr::DK_Error,
+                llvm::formatv(
+                    "Struct '{0}' constructor expects {1} arguments, but got "
+                    "{2}.",
+                    structName, stmt.getFieldSize(), args.size())
+                    .str());
+            return nullptr;
+          }
+
+          GCSAFE(context->getGC()) {
+            auto structV = StructValue::create(context, &stmt, args);
+            return structV;
+          }
+        });
+    Memory *newMem = ImmutableMemory::create(context, structConV);
+    getCurrEnv().insert(structName, newMem);
+  }
+  DenseMap<StringRef, size_t> &idxMap = structMemberMap[&stmt];
+  assert(idxMap.empty() && "Struct member map already exists");
+
+  for (auto [idx, field] : llvm::enumerate(stmt.getFieldNames())) {
+    idxMap[field] = idx;
+  }
+}
+
+static void interpretCompoundStatement(ArrayRef<Statement *> stmt,
+                                       StmtInterpreter &interpreter) {
+  Environment::Scope scope(interpreter.getCurrEnv());
+  for (const auto &decl : stmt) {
+    decl->accept(interpreter);
+    if (interpreter.isTerminated())
       return;
   }
 }
@@ -89,9 +132,9 @@ void StmtInterpreter::visit(const IfStatement &stmt) {
   }
 
   if (*condOpt)
-    stmt.getThenStmt()->accept(*this);
+    interpretCompoundStatement(stmt.getThenStmt(), *this);
   else if (stmt.hasElse())
-    stmt.getElseStmt()->accept(*this);
+    interpretCompoundStatement(stmt.getElseStmt(), *this);
 }
 
 void StmtInterpreter::visit(const WhileStatement &stmt) {
@@ -99,7 +142,7 @@ void StmtInterpreter::visit(const WhileStatement &stmt) {
   if (stmt.isDoWhile()) {
     bool cond;
     do {
-      stmt.getBody()->accept(*this);
+      interpretCompoundStatement(stmt.getBody(), *this);
       if (diag.hasError())
         return;
       else if (continueFlag) {
@@ -142,7 +185,7 @@ void StmtInterpreter::visit(const WhileStatement &stmt) {
       if (!*condOpt)
         break;
 
-      stmt.getBody()->accept(*this);
+      interpretCompoundStatement(stmt.getBody(), *this);
       if (diag.hasError())
         return;
       else if (continueFlag) {
@@ -186,7 +229,7 @@ void StmtInterpreter::visit(const ForStatement &stmt) {
         break;
     }
     Environment::Scope bodyScope(getCurrEnv());
-    stmt.getBody()->accept(*this);
+    interpretCompoundStatement(stmt.getBody(), *this);
     if (diag.hasError())
       return;
     else if (continueFlag) {
@@ -200,7 +243,7 @@ void StmtInterpreter::visit(const ForStatement &stmt) {
     }
 
     if (stepOpt) {
-      (*stepOpt)->accept(*this);
+      rvInterpret(**stepOpt);
       if (isTerminated())
         return;
     }
@@ -240,55 +283,6 @@ void StmtInterpreter::visit(const DeclarationStatement &stmt) {
     }
   } else
     patternDeclaration(*stmt.getPattern());
-}
-
-void StmtInterpreter::visit(const AssignmentStatement &stmt) {
-  auto lR = lvInterpret(*stmt.getLhs());
-  if (isTerminated())
-    return;
-
-  auto rR = rvInterpret(*stmt.getRhs());
-  if (isTerminated())
-    return;
-
-  if (!lR.getMemory()->assign(rR.getValue())) {
-    report(stmt.getRange(), InterpretDiagnostic::error_assignment_fail,
-           stmt.getLhs()->toString(), rR.getValue()->toString());
-  }
-}
-
-void StmtInterpreter::visit(const OperatorAssignmentStatement &stmt) {
-  auto lR = lvInterpret(*stmt.getLhs());
-  if (isTerminated())
-    return;
-  if (!lR.getMemory()->isa<ValueMemory>()) {
-    report(stmt.getLhs()->getRange(),
-           InterpretDiagnostic::error_invalid_left_size_of_operator_assignment,
-           operatorToString(stmt.getOperator()));
-    return;
-  }
-
-  auto *valueMemory = lR.getMemory()->cast<ValueMemory>();
-  auto lhsV = valueMemory->get();
-
-  auto rhsR = rvInterpret(*stmt.getRhs());
-  if (isTerminated())
-    return;
-  auto rhsV = rhsR.getValue();
-
-  auto result =
-      rvInterpreter->binaryOp(stmt.getRange(), lhsV, rhsV, stmt.getOperator());
-  if (isTerminated())
-    return;
-  if (!result) {
-    report(stmt.getRange(),
-           InterpretDiagnostic::error_invalid_operand_for_binary_operator,
-           operatorToString(stmt.getOperator()), lhsV->toString(),
-           rhsV->toString());
-    return;
-  }
-
-  valueMemory->assign(result->getValue());
 }
 
 void StmtInterpreter::visit(const FunctionDeclaration &stmt) {
@@ -344,7 +338,22 @@ void StmtInterpreter::patternDeclaration(const Pattern &pattern) {
       .Default([&](const Pattern *pattern) { return; });
 }
 
-bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
+static Value *
+getValueFromVariant(const variant<Value *, ValueMemory *> &valueOrMemory) {
+  return std::visit(
+      [&]<typename T>(T *obj) -> Value * {
+        using DecayT = std::remove_cvref_t<T>;
+        if constexpr (std::is_same_v<ValueMemory, T>) {
+          return obj->get();
+        } else {
+          return obj;
+        }
+      },
+      valueOrMemory);
+}
+
+bool StmtInterpreter::matchPattern(
+    const Pattern &pattern, variant<Value *, ValueMemory *> valueOrMemory) {
   return llvm::TypeSwitch<const Pattern *, bool>(&pattern)
       .Case([&](const IdentifierPattern *pattern) {
         auto ident = pattern->getName();
@@ -354,12 +363,56 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
           return false;
         }
         GCSAFE(context->getGC()) {
-          auto *newMem = ValueMemory::create(context, value);
+          auto *newMem = std::visit(
+              [&]<typename T>(T *obj) -> ValueMemory * {
+                if constexpr (std::is_same_v<Value, T>) {
+                  return ValueMemory::create(context, obj);
+                } else {
+                  return obj;
+                }
+              },
+              valueOrMemory);
           getCurrEnv().insert(ident, newMem);
         }
         return true;
       })
+      .Case([&](const StructPattern *pattern) -> bool {
+        auto *value = getValueFromVariant(valueOrMemory);
+        if (!value->isa<StructValue>())
+          return false;
+
+        StructValue *structV = value->cast<StructValue>();
+        const auto &idxMap = structMemberMap.at(structV->getDeclaration());
+        for (auto [isRef, fieldName, fieldPattern] : pattern->getFields()) {
+          if (fieldName.empty()) {
+            assert(fieldPattern->isa<IdentifierPattern>() &&
+                   "Unnamed field must be identifier pattern and it is field "
+                   "name");
+            fieldName = fieldPattern->cast<IdentifierPattern>()->getName();
+          }
+
+          auto it = idxMap.find(fieldName);
+          if (it == idxMap.end()) {
+            report(pattern->getRange(),
+                   InterpretDiagnostic::error_unknown_struct_field, fieldName,
+                   structV->getDeclaration()->getName());
+            return false;
+          }
+          size_t fieldIdx = it->second;
+          ValueMemory *fieldMem =
+              structV->getMembers()[fieldIdx]->cast<ValueMemory>();
+          if (isRef) {
+            if (!matchPattern(*fieldPattern, fieldMem))
+              return false;
+          } else {
+            if (!matchPattern(*fieldPattern, fieldMem->get()))
+              return false;
+          }
+        }
+        return true;
+      })
       .Case([&](const TuplePattern *pattern) {
+        auto *value = getValueFromVariant(valueOrMemory);
         if (!value->isa<TupleValue>())
           return false;
 
@@ -376,15 +429,17 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
         return true;
       })
       .Case([&](const GroupPattern *pattern) {
-        return matchPattern(*pattern->getPattern(), value);
+        return matchPattern(*pattern->getPattern(), valueOrMemory);
       })
       .Case([&](const IntegerPattern *pattern) {
+        auto *value = getValueFromVariant(valueOrMemory);
         if (!value->isa<IntegerValue>())
           return false;
         auto *intValue = value->cast<IntegerValue>();
         return intValue->getValue() == pattern->getValue();
       })
       .Case([&](const StringPattern *pattern) {
+        auto *value = getValueFromVariant(valueOrMemory);
         if (!value->isa<StringValue>())
           return false;
         auto *stringValue = value->cast<StringValue>();
@@ -392,12 +447,14 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
         return evaledPattern == stringValue->getValue();
       })
       .Case([&](const BooleanPattern *pattern) {
+        auto *value = getValueFromVariant(valueOrMemory);
         if (!value->isa<BoolValue>())
           return false;
         auto *boolValue = value->cast<BoolValue>();
         return boolValue->getValue() == pattern->getValue();
       })
       .Case([&](const FloatPattern *pattern) {
+        auto *value = getValueFromVariant(valueOrMemory);
         if (!value->isa<FloatValue>())
           return false;
         auto *floatValue = value->cast<FloatValue>();
@@ -407,6 +464,7 @@ bool StmtInterpreter::matchPattern(const Pattern &pattern, Value *value) {
       })
       .Case([&](const EmptyPattern *pattern) { return true; })
       .Default([&](const Pattern *pattern) {
+        auto *value = getValueFromVariant(valueOrMemory);
         assert(pattern->isa<NilPattern>());
         return value->isa<NilValue>();
       });

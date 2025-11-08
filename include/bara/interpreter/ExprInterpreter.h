@@ -28,6 +28,8 @@ public:
 
   Environment &getCurrEnv() { return stmtInterpreter->getCurrEnv(); }
 
+  bool isTerminated() const { return stmtInterpreter->isTerminated(); }
+
 protected:
   Diagnostic &diag;
   MemoryContext *context;

@@ -12,5 +12,6 @@ VALUE(Nil)
 VALUE(Function)
 VALUE(Lambda)
 VALUE(BuiltinFunction)
+VALUE(Struct)
 
 #undef VALUE

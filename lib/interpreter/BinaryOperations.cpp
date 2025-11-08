@@ -107,6 +107,7 @@ void AddVisitor::visit(const NilValue &l) { result = nullptr; }
 void AddVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void AddVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void AddVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void AddVisitor::visit(const StructValue &l) { result = nullptr; }
 
 class SubVisitor : public BinaryOpVisitorImpl<SubVisitor> {
 public:
@@ -163,6 +164,7 @@ void SubVisitor::visit(const NilValue &l) { result = nullptr; }
 void SubVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void SubVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void SubVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void SubVisitor::visit(const StructValue &l) { result = nullptr; }
 
 class MulVisitor : public BinaryOpVisitorImpl<MulVisitor> {
 public:
@@ -258,6 +260,7 @@ void MulVisitor::visit(const NilValue &l) { result = nullptr; }
 void MulVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void MulVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void MulVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void MulVisitor::visit(const StructValue &l) { result = nullptr; }
 
 class DivVisitor : public BinaryOpVisitorImpl<DivVisitor> {
 public:
@@ -301,6 +304,7 @@ void DivVisitor::visit(const NilValue &l) { result = nullptr; }
 void DivVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void DivVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void DivVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void DivVisitor::visit(const StructValue &l) { result = nullptr; }
 
 class ModVisitor : public BinaryOpVisitorImpl<ModVisitor> {
 public:
@@ -327,6 +331,7 @@ void ModVisitor::visit(const NilValue &l) { result = nullptr; }
 void ModVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void ModVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void ModVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void ModVisitor::visit(const StructValue &l) { result = nullptr; }
 
 namespace {
 
@@ -457,6 +462,7 @@ void Comparator::visit(const NilValue &l) { err = true; }
 void Comparator::visit(const FunctionValue &l) { err = true; }
 void Comparator::visit(const LambdaValue &l) { err = true; }
 void Comparator::visit(const BuiltinFunctionValue &l) { err = true; }
+void Comparator::visit(const StructValue &l) { err = true; }
 
 class BitAndVisitor : public BinaryOpVisitorImpl<BitAndVisitor> {
 public:
@@ -498,6 +504,7 @@ void BitAndVisitor::visit(const NilValue &l) { result = nullptr; }
 void BitAndVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void BitAndVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void BitAndVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void BitAndVisitor::visit(const StructValue &l) { result = nullptr; }
 
 class BitOrVisitor : public BinaryOpVisitorImpl<BitOrVisitor> {
 public:
@@ -539,6 +546,7 @@ void BitOrVisitor::visit(const NilValue &l) { result = nullptr; }
 void BitOrVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void BitOrVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void BitOrVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void BitOrVisitor::visit(const StructValue &l) { result = nullptr; }
 
 class BitXorVisitor : public BinaryOpVisitorImpl<BitXorVisitor> {
 public:
@@ -580,6 +588,7 @@ void BitXorVisitor::visit(const NilValue &l) { result = nullptr; }
 void BitXorVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void BitXorVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void BitXorVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void BitXorVisitor::visit(const StructValue &l) { result = nullptr; }
 
 class ShlVisitor : public BinaryOpVisitorImpl<ShlVisitor> {
 public:
@@ -622,6 +631,7 @@ void ShlVisitor::visit(const NilValue &l) { result = nullptr; }
 void ShlVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void ShlVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void ShlVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void ShlVisitor::visit(const StructValue &l) { result = nullptr; }
 
 class ShrVisitor : public BinaryOpVisitorImpl<ShrVisitor> {
 public:
@@ -664,6 +674,7 @@ void ShrVisitor::visit(const NilValue &l) { result = nullptr; }
 void ShrVisitor::visit(const FunctionValue &l) { result = nullptr; }
 void ShrVisitor::visit(const LambdaValue &l) { result = nullptr; }
 void ShrVisitor::visit(const BuiltinFunctionValue &l) { result = nullptr; }
+void ShrVisitor::visit(const StructValue &l) { result = nullptr; }
 
 namespace BinaryOp {
 #define BINARY_FUNC(funcName, VisitorName)                                     \

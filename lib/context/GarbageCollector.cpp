@@ -97,6 +97,14 @@ void ValueMarker::visit(LambdaValue &val) {
 }
 void ValueMarker::visit(BuiltinFunctionValue &val) { val.mark(); }
 
+void ValueMarker::visit(StructValue &val) {
+  if (val.isMarked())
+    return;
+  val.mark();
+  for (const auto memory : val.getMembers())
+    memory->accept(memoryMarker);
+}
+
 void GC::collect() {
   /// stmt interpreter return value
   if (interpreter->returnValue)

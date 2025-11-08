@@ -116,7 +116,7 @@ string evalStringLiteral(StringRef buffer) {
 
 void RvExprInterpreter::visit(const IdentifierExpression &expr) {
   auto *memory = interpretIdentifier(&expr);
-  if (diag.hasError())
+  if (isTerminated())
     return;
 
   if (auto *valueMemory = memory->dyn_cast<ValueMemory>())
@@ -129,7 +129,7 @@ void RvExprInterpreter::visit(const IdentifierExpression &expr) {
 
 void RvExprInterpreter::visit(const IndexExpression &expr) {
   auto memoryOrValueOrChar = interpretIndex(&expr);
-  if (diag.hasError())
+  if (isTerminated())
     return;
 
   if (std::holds_alternative<char>(memoryOrValueOrChar)) {
@@ -156,7 +156,7 @@ void RvExprInterpreter::visit(const IndexExpression &expr) {
 
 void RvExprInterpreter::visit(const MatchExpression &expr) {
   expr.getExpr()->accept(*this);
-  if (diag.hasError())
+  if (isTerminated())
     return;
   auto valueR = std::move(result);
   auto value = valueR.getValue();
@@ -181,11 +181,42 @@ void RvExprInterpreter::visit(const LambdaExpression &expr) {
   }
 }
 
+void RvExprInterpreter::visit(const StructAccessExpression &expr) {
+  expr.getBase()->accept(*this);
+  if (isTerminated())
+    return;
+
+  auto base = std::move(result);
+  if (!base.getValue()->isa<StructValue>()) {
+    stmtInterpreter->report(expr.getBase()->getRange(),
+                            InterpretDiagnostic::error_expected_struct,
+                            base.getValue()->toString());
+    return;
+  }
+
+  auto structV = base.getValue()->cast<StructValue>();
+  const auto &idxMap =
+      stmtInterpreter->structMemberMap.at(structV->getDeclaration());
+
+  if (auto it = idxMap.find(expr.getFieldName()); it != idxMap.end()) {
+    GCSAFE(context->getGC()) {
+      auto memberV = structV->getMembers()[(it->second)];
+      result =
+          context->getGC()->registerRoot(memberV->cast<ValueMemory>()->get());
+    }
+  } else {
+    stmtInterpreter->report(
+        expr.getRange(), InterpretDiagnostic::error_unknown_struct_field,
+        expr.getFieldName(), structV->getDeclaration()->getName());
+    return;
+  }
+}
+
 void RvExprInterpreter::visit(const BinaryExpression &expr) {
   switch (expr.getOperator()) {
   case Operator::And: {
     expr.getLhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto lhs = std::move(result);
     auto lhsBoolOpt = lhs.getValue()->toBool();
@@ -206,7 +237,7 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
     }
 
     expr.getRhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto rhs = std::move(result);
     auto rhsBoolOpt = rhs.getValue()->toBool();
@@ -226,7 +257,7 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
   }
   case Operator::Or: {
     expr.getLhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto lhs = std::move(result);
     auto lhsBoolOpt = lhs.getValue()->toBool();
@@ -247,7 +278,7 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
     }
 
     expr.getRhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto rhs = std::move(result);
     auto rhsBoolOpt = rhs.getValue()->toBool();
@@ -267,12 +298,12 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
   }
   case Operator::Eq: {
     expr.getLhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto lhs = std::move(result);
 
     expr.getRhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto rhs = std::move(result);
 
@@ -285,12 +316,12 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
   }
   case Operator::Ne: {
     expr.getLhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto lhs = std::move(result);
 
     expr.getRhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto rhs = std::move(result);
 
@@ -303,12 +334,12 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
   }
   default:
     expr.getLhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto lhs = std::move(result);
 
     expr.getRhs()->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     auto rhs = std::move(result);
 
@@ -326,9 +357,66 @@ void RvExprInterpreter::visit(const BinaryExpression &expr) {
   }
 }
 
+void RvExprInterpreter::visit(const AssignmentExpression &stmt) {
+  auto lR = stmtInterpreter->lvInterpret(*stmt.getLhs());
+  if (isTerminated())
+    return;
+  if (stmt.getOperator() && !lR.getMemory()->isa<ValueMemory>()) {
+    stmtInterpreter->report(
+        stmt.getLhs()->getRange(),
+        InterpretDiagnostic::error_invalid_left_size_of_operator_assignment,
+        operatorToString(*stmt.getOperator()) + "=");
+    return;
+  }
+
+  if (stmt.getOperator()) {
+    auto *valueMemory = lR.getMemory()->cast<ValueMemory>();
+    auto lhsV = valueMemory->get();
+
+    auto rhsR = stmtInterpreter->rvInterpret(*stmt.getRhs());
+    if (stmtInterpreter->isTerminated())
+      return;
+    auto rhsV = rhsR.getValue();
+
+    optional<GC::RootRegister> assignValue;
+    if (stmt.getOperator()) {
+      assignValue = binaryOp(stmt.getRange(), lhsV, rhsV, *stmt.getOperator());
+      if (isTerminated())
+        return;
+    } else {
+      GCSAFE(context->getGC()) {
+        assignValue = context->getGC()->registerRoot(rhsV);
+      }
+    }
+    if (!assignValue) {
+      stmtInterpreter->report(
+          stmt.getRange(),
+          InterpretDiagnostic::error_invalid_operand_for_binary_operator,
+          (stmt.getOperator() ? operatorToString(*stmt.getOperator()) : "") +
+              "=",
+          lhsV->toString(), rhsV->toString());
+      return;
+    }
+
+    valueMemory->assign(assignValue->getValue());
+    result = std::move(*assignValue);
+  } else {
+    auto rhsR = stmtInterpreter->rvInterpret(*stmt.getRhs());
+    if (stmtInterpreter->isTerminated())
+      return;
+
+    if (!lR.getMemory()->assign(rhsR.getValue())) {
+      stmtInterpreter->report(stmt.getRange(),
+                              InterpretDiagnostic::error_assignment_fail,
+                              rhsR.getValue()->toString());
+      return;
+    }
+    result = std::move(rhsR);
+  }
+}
 void RvExprInterpreter::visit(const UnaryExpression &expr) {
   expr.getExpr()->accept(*this);
-  if (diag.hasError())
+  if (isTerminated())
     return;
   auto operand = std::move(result);
 
@@ -431,7 +519,7 @@ void RvExprInterpreter::visit(const UnaryExpression &expr) {
 
 void RvExprInterpreter::visit(const ConditionalExpression &expr) {
   expr.getCond()->accept(*this);
-  if (diag.hasError())
+  if (isTerminated())
     return;
   auto cond = std::move(result);
 
@@ -452,9 +540,11 @@ void RvExprInterpreter::visit(const ConditionalExpression &expr) {
 
 void RvExprInterpreter::visit(const CallExpression &expr) {
   expr.getCallee()->accept(*this);
-  if (diag.hasError())
+  if (isTerminated())
     return;
+
   auto callee = std::move(result);
+  assert(callee.hasValue() && "Callee must have value");
   if (!callee.getValue()
            ->isa<FunctionValue, LambdaValue, BuiltinFunctionValue>()) {
     stmtInterpreter->report(expr.getRange(),
@@ -467,7 +557,7 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
   args.reserve(expr.getArgs().size());
   for (auto *argExpr : expr.getArgs()) {
     argExpr->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     args.emplace_back(std::move(result));
   }
@@ -521,7 +611,7 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
         }
         if (diag.hasError()) {
           stmtInterpreter->report(
-              funcDecl->getRange(),
+              expr.getRange(),
               InterpretDiagnostic::note_dump_function_call_stack,
               funcDecl->getName());
         } else if (stmtInterpreter->continueFlag) {
@@ -576,33 +666,24 @@ void RvExprInterpreter::visit(const CallExpression &expr) {
 
         Environment::Scope bodyScope(getCurrEnv());
 
-        if (lambdaDecl->isExprBody()) {
-          lambdaDecl->getExprBody()->accept(*this);
-        } else {
-          lambdaDecl->getStmtBody()->accept(*stmtInterpreter);
-          if (diag.hasError()) {
-            stmtInterpreter->report(
-                lambdaDecl->getRange(),
-                InterpretDiagnostic::note_dump_lambda_call_stack);
-          } else if (stmtInterpreter->continueFlag) {
-            stmtInterpreter->report(
-                stmtInterpreter->continueFlag->getRange(),
-                InterpretDiagnostic::error_unresolved_continue_statement);
-          } else if (stmtInterpreter->breakFlag) {
-            stmtInterpreter->report(
-                stmtInterpreter->breakFlag->getRange(),
-                InterpretDiagnostic::error_unresolved_break_statement);
-          } else if (stmtInterpreter->returnFlag) {
-            result =
-                context->getGC()->registerRoot(stmtInterpreter->returnValue);
-            stmtInterpreter->returnFlag = nullptr;
-            stmtInterpreter->returnValue = nullptr;
-          } else {
-            GCSAFE(context->getGC()) {
-              auto nilV = NilValue::create(context);
-              result = context->getGC()->registerRoot(nilV);
-            }
-          }
+        lambdaDecl->getExprBody()->accept(*this);
+
+        if (diag.hasError()) {
+          stmtInterpreter->report(
+              lambdaDecl->getRange(),
+              InterpretDiagnostic::note_dump_lambda_call_stack);
+        } else if (stmtInterpreter->continueFlag) {
+          stmtInterpreter->report(
+              stmtInterpreter->continueFlag->getRange(),
+              InterpretDiagnostic::error_unresolved_continue_statement);
+        } else if (stmtInterpreter->breakFlag) {
+          stmtInterpreter->report(
+              stmtInterpreter->breakFlag->getRange(),
+              InterpretDiagnostic::error_unresolved_break_statement);
+        } else if (stmtInterpreter->returnFlag) {
+          result = context->getGC()->registerRoot(stmtInterpreter->returnValue);
+          stmtInterpreter->returnFlag = nullptr;
+          stmtInterpreter->returnValue = nullptr;
         }
       })
       .Case([&](BuiltinFunctionValue *builtinV) {
@@ -628,7 +709,7 @@ void RvExprInterpreter::visit(const ArrayExpression &expr) {
 
   for (auto *elementExpr : expr.getArgs()) {
     elementExpr->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
     registers.emplace_back(std::move(result));
   }
@@ -647,7 +728,7 @@ void RvExprInterpreter::visit(const TupleExpression &expr) {
 
   for (auto *elementExpr : expr.getExprs()) {
     elementExpr->accept(*this);
-    if (diag.hasError())
+    if (isTerminated())
       return;
 
     values.emplace_back(std::move(result));
@@ -669,11 +750,18 @@ void RvExprInterpreter::visit(const CompoundExpression &expr) {
   Environment::Scope scope(getCurrEnv());
   for (auto *subStmt : expr.getStmts()) {
     subStmt->accept(*stmtInterpreter);
-    if (diag.hasError())
+    if (stmtInterpreter->isTerminated())
       return;
   }
   // The result of a compound expression is the result of its last expression
-  expr.getExpr()->accept(*this);
+  if (expr.getExpr()) {
+    expr.getExpr()->accept(*this);
+  } else {
+    GCSAFE(context->getGC()) {
+      auto nilV = NilValue::create(context);
+      result = context->getGC()->registerRoot(nilV);
+    }
+  }
 }
 
 void RvExprInterpreter::visit(const IntegerLiteral &expr) {

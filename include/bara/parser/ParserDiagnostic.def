@@ -10,5 +10,7 @@ DIAG(error_unchangable_expression_to_pattern_ast,
 DIAG(error_unvalued_compound_expression, "Compound expression has no value.",
      Error)
 DIAG(error_expect_token, "Expect token: ({0}).", Error)
+DIAG(error_duplicated_field,
+     "Duplicated field '{0}' in struct '{1}' declaration.", Error)
 
 #undef DIAG

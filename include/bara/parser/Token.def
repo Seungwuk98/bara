@@ -50,6 +50,7 @@ TOKEN(CaretEqual)     // ^=
 TOKEN(RightArrow)     // =>
 TOKEN(Question)       // ?
 TOKEN(Colon)          // :
+TOKEN(Dot)            // .
 
 TOKEN(Identifier)
 TOKEN(IntegerLiteral)
@@ -70,6 +71,8 @@ KEYWORD(false)
 KEYWORD(nil)
 KEYWORD(fn)
 KEYWORD(match)
+KEYWORD(struct)
+KEYWORD(ref)
 
 TOKEN(Eof)
 

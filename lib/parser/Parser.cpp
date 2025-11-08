@@ -1,6 +1,8 @@
 #include "bara/parser/Parser.h"
 #include "bara/ast/AST.h"
 #include "bara/diagnostic/Diagnostic.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 
 namespace bara {
@@ -12,11 +14,70 @@ Program *Parser::parse() { return parseProgram(); }
 Program *Parser::parseProgram() {
   RangeCapture capture(*this);
 
-  auto stmts = parseStatements();
-  if (diag.hasError())
+  vector<Statement *> statements;
+
+  while (!peekIs<Token::Tok_Eof>()) {
+    if (peekIs<Token::Tok_struct>()) {
+      auto *structDecl = parseStructDeclaration();
+      if (diag.hasError())
+        return nullptr;
+      statements.emplace_back(structDecl);
+    } else {
+      auto *stmt = parseStatement();
+      if (diag.hasError())
+        return nullptr;
+      statements.emplace_back(stmt);
+    }
+  }
+
+  return Program::create(capture.create(), context, statements);
+}
+
+StructDeclaration *Parser::parseStructDeclaration() {
+  RangeCapture capture(*this);
+  if (consume<Token::Tok_struct>())
     return nullptr;
 
-  return Program::create(capture.create(), context, stmts);
+  auto *identTok = advance();
+  if (expect<Token::Tok_Identifier>(identTok))
+    return nullptr;
+
+  auto structName = identTok->getSymbol();
+
+  if (consume<Token::Tok_LParen>())
+    return nullptr;
+
+  llvm::SetVector<StringRef> fields;
+  if (!peekIs<Token::Tok_RParen>()) {
+    auto *fieldTok = advance();
+    if (expect<Token::Tok_Identifier>(fieldTok))
+      return nullptr;
+    fields.insert(fieldTok->getSymbol());
+
+    while (peekIs<Token::Tok_Comma>()) {
+      skip();
+      fieldTok = advance();
+      if (expect<Token::Tok_Identifier>(fieldTok))
+        return nullptr;
+
+      auto inserted = fields.insert(fieldTok->getSymbol());
+      if (!inserted) {
+        report(fieldTok->getRange(), ParseDiagnostic::error_duplicated_field,
+               "field", fieldTok->getSymbol(), structName);
+        return nullptr;
+      }
+    }
+  }
+
+  if (consume<Token::Tok_RParen>())
+    return nullptr;
+
+  if (consume<Token::Tok_Semicolon>())
+    return nullptr;
+
+  return StructDeclaration::create(
+      capture.create(), context, structName,
+      llvm::map_to_vector(fields, [](StringRef field) { return field; }));
 }
 
 Statement *Parser::parseStatement() {
@@ -36,8 +97,6 @@ Statement *Parser::parseStatement() {
 AST *Parser::parseStatementAllowedExpression() {
   auto *peekTok = peek();
   switch (peekTok->getKind()) {
-  case Token::Tok_LBrace:
-    return parseCompoundStatement();
   case Token::Tok_if:
     return parseIfStatement();
   case Token::Tok_while:
@@ -69,38 +128,24 @@ AST *Parser::parseStatementAllowedExpression() {
     case Token::Tok_Eof:
       report(peekTok->getRange(), ParseDiagnostic::error_unexpected_token,
              "semicolon", Token::getTokenString(peekTok->getKind()));
-    case Token::Tok_Equal:
-      return parseAssignmentStatement(expr);
-    case Token::Tok_PlusEqual:
-    case Token::Tok_MinusEqual:
-    case Token::Tok_StarEqual:
-    case Token::Tok_SlashEqual:
-    case Token::Tok_PercentEqual:
-    case Token::Tok_LShiftEqual:
-    case Token::Tok_RShiftEqual:
-    case Token::Tok_AmpersandEqual:
-    case Token::Tok_VBarEqual:
-    case Token::Tok_CaretEqual:
-      return parseOperatorAssignmentStatement(expr);
     default:
       return expr;
     }
   }
 }
 
-CompoundStatement *Parser::parseCompoundStatement() {
-  RangeCapture capture(*this);
+vector<Statement *> Parser::parseCompoundStatement() {
   if (consume<Token::Tok_LBrace>())
-    return nullptr;
+    return {};
 
   auto stmts = parseStatements();
   if (diag.hasError())
-    return nullptr;
+    return {};
 
   if (consume<Token::Tok_RBrace>())
-    return nullptr;
+    return {};
 
-  return CompoundStatement::create(capture.create(), context, stmts);
+  return stmts;
 }
 
 IfStatement *Parser::parseIfStatement() {
@@ -133,7 +178,8 @@ IfStatement *Parser::parseIfStatement() {
     }
   }
 
-  return IfStatement::create(capture.create(), context, expr, thenStmt);
+  return IfStatement::create(capture.create(), context, expr, thenStmt,
+                             nullopt);
 }
 
 WhileStatement *Parser::parseWhileStatement() {
@@ -215,42 +261,12 @@ ForStatement *Parser::parseForStatement() {
   if (consume<Token::Tok_Semicolon>())
     return nullptr;
 
-  optional<Statement *> step;
+  optional<Expression *> step;
   if (!peekIs<Token::Tok_RParen>()) {
-    if (peekIs<Token::Tok_LBrace>()) {
-      /// Compound Statement
-      step = parseCompoundStatement();
-      if (diag.hasError())
-        return nullptr;
-    } else {
-      /// Assignment
-      RangeCapture stepCapture(*this);
-
-      auto *expr = parseExpression();
-      if (diag.hasError())
-        return nullptr;
-
-      auto *nextTok = advance();
-      if (nextTok->is<Token::Tok_Equal>()) {
-        auto *rhs = parseExpression();
-        if (diag.hasError())
-          return nullptr;
-        step = AssignmentStatement::create(stepCapture.create(), context, expr,
-                                           rhs);
-      } else {
-        auto op = getOperator(nextTok->getKind());
-        if (!op) {
-          report(nextTok->getRange(), ParseDiagnostic::error_unparsable_token,
-                 "operator", Token::getTokenString(nextTok->getKind()));
-          return nullptr;
-        }
-        auto *rhs = parseExpression();
-        if (diag.hasError())
-          return nullptr;
-        step = OperatorAssignmentStatement::create(stepCapture.create(),
-                                                   context, expr, *op, rhs);
-      }
-    }
+    auto *expr = parseExpression();
+    if (diag.hasError())
+      return nullptr;
+    step = expr;
   }
 
   if (consume<Token::Tok_RParen>())
@@ -330,24 +346,6 @@ DeclarationStatement *Parser::parseDeclarationStatement() {
   return DeclarationStatement::create(capture.create(), context, pattern, init);
 }
 
-AssignmentStatement *Parser::parseAssignmentStatement(Expression *lhs) {
-  RangeCapture capture(*this, lhs->getRange().Start);
-  if (diag.hasError())
-    return nullptr;
-
-  if (consume<Token::Tok_Equal>())
-    return nullptr;
-
-  auto *expr = parseExpression();
-  if (diag.hasError())
-    return nullptr;
-
-  if (consume<Token::Tok_Semicolon>())
-    return nullptr;
-
-  return AssignmentStatement::create(capture.create(), context, lhs, expr);
-}
-
 static optional<Operator> getOperator(Token::Kind kind) {
   switch (kind) {
   case Token::Tok_PlusEqual:
@@ -373,31 +371,6 @@ static optional<Operator> getOperator(Token::Kind kind) {
   default:
     return nullopt;
   }
-}
-
-OperatorAssignmentStatement *
-Parser::parseOperatorAssignmentStatement(Expression *lhs) {
-  RangeCapture capture(*this, lhs->getRange().Start);
-  if (diag.hasError())
-    return nullptr;
-
-  auto *nextTok = advance();
-  optional<Operator> op = getOperator(nextTok->getKind());
-  if (!op) {
-    report(nextTok->getRange(), ParseDiagnostic::error_unexpected_token,
-           "operator assignment", Token::getTokenString(nextTok->getKind()));
-    return nullptr;
-  }
-
-  auto *expr = parseExpression();
-  if (diag.hasError())
-    return nullptr;
-
-  if (consume<Token::Tok_Semicolon>())
-    return nullptr;
-
-  return OperatorAssignmentStatement::create(capture.create(), context, lhs,
-                                             *op, expr);
 }
 
 FunctionDeclaration *Parser::parseFunctionDeclaration() {
@@ -446,9 +419,11 @@ FunctionDeclaration *Parser::parseFunctionDeclaration() {
                                      params, stmts);
 }
 
-Expression *Parser::parseExpression() { return parseConditionalExpression(); }
+Expression *Parser::parseExpression() {
+  return parseConditionalOrAssignExpression();
+}
 
-Expression *Parser::parseConditionalExpression() {
+Expression *Parser::parseConditionalOrAssignExpression() {
   RangeCapture capture(*this);
   auto *cond = parseLogicalOrExpression();
   if (diag.hasError())
@@ -456,19 +431,33 @@ Expression *Parser::parseConditionalExpression() {
 
   if (peekIs<Token::Tok_Question>()) {
     skip();
-    auto *thenExpr = parseConditionalExpression();
+    auto *thenExpr = parseConditionalOrAssignExpression();
     if (diag.hasError())
       return nullptr;
 
     if (consume<Token::Tok_Colon>())
       return nullptr;
 
-    auto *elseExpr = parseConditionalExpression();
+    auto *elseExpr = parseConditionalOrAssignExpression();
     if (diag.hasError())
       return nullptr;
 
     return ConditionalExpression::create(capture.create(), context, cond,
                                          thenExpr, elseExpr);
+  } else if (peekIs<Token::Tok_Equal, Token::Tok_PlusEqual,
+                    Token::Tok_MinusEqual, Token::Tok_StarEqual,
+                    Token::Tok_SlashEqual, Token::Tok_PercentEqual,
+                    Token::Tok_LShiftEqual, Token::Tok_RShiftEqual,
+                    Token::Tok_AmpersandEqual, Token::Tok_VBarEqual,
+                    Token::Tok_CaretEqual>()) {
+    auto opTok = advance();
+    auto op = getOperator(opTok->getKind());
+
+    auto *rhs = parseConditionalOrAssignExpression();
+    if (diag.hasError())
+      return nullptr;
+    return AssignmentExpression::create(capture.create(), context, cond, op,
+                                        rhs);
   }
 
   return cond;
@@ -685,16 +674,16 @@ Expression *Parser::parseUnaryExpression() {
                                                             : Operator::BitNot,
                                    expr);
   }
-  return parseCallOrIndexExpression();
+  return parseCallOrAccessExpression();
 }
 
-Expression *Parser::parseCallOrIndexExpression() {
+Expression *Parser::parseCallOrAccessExpression() {
   RangeCapture capture(*this);
   auto *lhs = parsePrimaryExpression();
   if (diag.hasError())
     return nullptr;
 
-  while (peekIs<Token::Tok_LParen, Token::Tok_LBracket>()) {
+  while (peekIs<Token::Tok_LParen, Token::Tok_LBracket, Token::Tok_Dot>()) {
     auto *peekTok = peek();
     if (peekTok->is<Token::Tok_LParen>()) {
       skip();
@@ -716,7 +705,7 @@ Expression *Parser::parseCallOrIndexExpression() {
       if (consume<Token::Tok_RParen>())
         return nullptr;
       lhs = CallExpression::create(capture.create(), context, lhs, args);
-    } else {
+    } else if (peekTok->is<Token::Tok_LBracket>()) {
       skip();
       auto *index = parseExpression();
       if (diag.hasError())
@@ -724,6 +713,14 @@ Expression *Parser::parseCallOrIndexExpression() {
       if (consume<Token::Tok_RBracket>())
         return nullptr;
       lhs = IndexExpression::create(capture.create(), context, lhs, index);
+    } else /* Dot */ {
+      skip();
+      auto *identTok = advance();
+      if (expect<Token::Tok_Identifier>(identTok))
+        return nullptr;
+
+      lhs = StructAccessExpression::create(capture.create(), context, lhs,
+                                           identTok->getSymbol());
     }
   }
 
@@ -792,9 +789,6 @@ MatchExpression *Parser::parseMatchExpression() {
 }
 
 MatchExpression::MatchCase Parser::parseMatchCase() {
-  if (consume<Token::Tok_BackSlash>())
-    return {};
-
   auto *pattern = parsePattern();
   if (diag.hasError())
     return {};
@@ -836,12 +830,6 @@ LambdaExpression *Parser::parseLambdaExpression() {
   if (consume<Token::Tok_RightArrow>())
     return nullptr;
 
-  if (peekIs<Token::Tok_LBrace>()) {
-    auto stmt = parseCompoundStatement();
-    if (diag.hasError())
-      return nullptr;
-    return LambdaExpression::create(capture.create(), context, params, stmt);
-  }
   auto *expr = parseExpression();
   if (diag.hasError())
     return nullptr;
@@ -878,12 +866,6 @@ CompoundExpression *Parser::parseCompoundExpression() {
     } else {
       llvm_unreachable("Expected Statement or Expression");
     }
-  }
-
-  if (!expr) {
-    report(capture.create(),
-           ParseDiagnostic::error_unvalued_compound_expression);
-    return nullptr;
   }
 
   if (consume<Token::Tok_RBrace>())
@@ -1010,7 +992,7 @@ Pattern *Parser::parsePattern() {
 
   switch (peekTok->getKind()) {
   case Token::Tok_Identifier:
-    return parseIdentifierPattern();
+    return parseIdentifierOrStructPattern();
   case Token::Tok_LParen:
     return parseTupleOrGroupPattern();
   case Token::Tok_IntegerLiteral:
@@ -1031,14 +1013,69 @@ Pattern *Parser::parsePattern() {
   }
 }
 
-Pattern *Parser::parseIdentifierPattern() {
+Pattern *Parser::parseIdentifierOrStructPattern() {
+  RangeCapture capture(*this);
   auto *identTok = advance();
   if (expect<Token::Tok_Identifier>(identTok))
     return nullptr;
   if (identTok->getSymbol() == "_")
     return EmptyPattern::create(identTok->getRange(), context);
-  return IdentifierPattern::create(identTok->getRange(), context,
-                                   identTok->getSymbol());
+
+  if (peekIs<Token::Tok_LParen>()) {
+    skip();
+
+    StringRef structName = identTok->getSymbol();
+
+    SmallVector<std::tuple<bool, StringRef, Pattern *>> fields;
+
+    if (!peekIs<Token::Tok_RParen>()) {
+      auto parsePatternField =
+          [&]() -> optional<tuple<bool, StringRef, Pattern *>> {
+        bool isRef = false;
+        if (peekIs<Token::Tok_ref>()) {
+          isRef = true;
+          skip();
+        }
+        identTok = advance();
+        if (expect<Token::Tok_Identifier>(identTok))
+          return nullopt;
+
+        Pattern *pattern;
+        StringRef field;
+        if (peekIs<Token::Tok_Colon>()) {
+          skip();
+          field = identTok->getSymbol();
+          pattern = parsePattern();
+          if (diag.hasError())
+            return nullopt;
+        } else {
+          pattern = IdentifierPattern::create(identTok->getRange(), context,
+                                              identTok->getSymbol());
+        }
+        return tuple(isRef, field, pattern);
+      };
+
+      auto fieldOpt = parsePatternField();
+      if (diag.hasError())
+        return nullptr;
+      fields.emplace_back(*fieldOpt);
+
+      while (peekIs<Token::Tok_Comma>()) {
+        skip();
+        fieldOpt = parsePatternField();
+        if (diag.hasError())
+          return nullptr;
+        fields.emplace_back(*fieldOpt);
+      }
+    }
+
+    if (consume<Token::Tok_RParen>())
+      return nullptr;
+
+    return StructPattern::create(capture.create(), context, structName, fields);
+  } else
+    return IdentifierPattern::create(identTok->getRange(), context,
+                                     identTok->getSymbol());
 }
 
 Pattern *Parser::parseTupleOrGroupPattern() {

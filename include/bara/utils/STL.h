@@ -8,6 +8,7 @@
 
 namespace bara {
 using std::array;
+using std::monostate;
 using std::nullopt;
 using std::optional;
 using std::pair;

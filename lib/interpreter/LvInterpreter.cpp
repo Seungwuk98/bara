@@ -48,6 +48,35 @@ void LvExprInterpreter::visit(const TupleExpression &expr) {
   }
 }
 
+void LvExprInterpreter::visit(const StructAccessExpression &expr) {
+  auto base = stmtInterpreter->rvInterpret(*expr.getBase());
+  if (diag.hasError())
+    return;
+
+  if (!base.getValue()->isa<StructValue>()) {
+    stmtInterpreter->report(expr.getBase()->getRange(),
+                            InterpretDiagnostic::error_expected_struct,
+                            base.getValue()->toString());
+    return;
+  }
+
+  auto structV = base.getValue()->cast<StructValue>();
+  const auto &idxMap =
+      stmtInterpreter->structMemberMap.at(structV->getDeclaration());
+
+  if (auto it = idxMap.find(expr.getFieldName()); it != idxMap.end()) {
+    GCSAFE(context->getGC()) {
+      auto memberV = structV->getMembers()[(it->second)];
+      result = context->getGC()->registerRoot(memberV);
+    }
+  } else {
+    stmtInterpreter->report(
+        expr.getRange(), InterpretDiagnostic::error_unknown_struct_field,
+        expr.getFieldName(), structV->getDeclaration()->getName());
+    return;
+  }
+}
+
 #define EXPRESSION(Name)                                                       \
   void LvExprInterpreter::visit(const Name &expr) {                            \
     stmtInterpreter->report(                                                   \
@@ -58,6 +87,7 @@ void LvExprInterpreter::visit(const TupleExpression &expr) {
 EXPRESSION(MatchExpression)
 EXPRESSION(LambdaExpression)
 EXPRESSION(BinaryExpression)
+EXPRESSION(AssignmentExpression)
 EXPRESSION(UnaryExpression)
 EXPRESSION(ConditionalExpression)
 EXPRESSION(CallExpression)

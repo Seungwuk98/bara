@@ -1,0 +1,24 @@
+// RUN: bara %s -interpret | FileCheck %s
+
+struct Vector(x, y, z, distSquare);
+
+
+fn createVector(x, y, z) {
+  var this = Vector(x, y, z, nil);
+
+  fn distSquare() {
+    return this.x * this.x + this.y * this.y + this.z * this.z;
+  }
+
+  this.distSquare = distSquare;
+  return this;
+}
+
+var vec = createVector(1, 2, 3);
+
+print(vec.distSquare());
+// CHECK: 14
+
+vec.x = 4;
+print(vec.distSquare());
+// CHECK: 29

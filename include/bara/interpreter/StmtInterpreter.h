@@ -29,6 +29,9 @@ public:
   GC::RootRegister lvInterpret(const Expression &ast);
   GC::RootRegister rvInterpret(const Expression &ast);
   Environment &getCurrEnv() { return *stack.back(); }
+  bool isTerminated() const {
+    return diag.hasError() || continueFlag || breakFlag || returnFlag;
+  }
 
 private:
   struct InterpretDiagnostic {
@@ -67,7 +70,8 @@ private:
   };
 
   void patternDeclaration(const Pattern &pattern);
-  bool matchPattern(const Pattern &pattern, Value *value);
+  bool matchPattern(const Pattern &pattern,
+                    variant<Value *, ValueMemory *> value);
 
   template <typename ConcreteType>
   friend class CommonExprInterpreter;
@@ -82,9 +86,8 @@ private:
   RvExprInterpreter *rvInterpreter;
   LvExprInterpreter *lvInterpreter;
 
-  bool isTerminated() const {
-    return diag.hasError() || continueFlag || breakFlag || returnFlag;
-  }
+  DenseMap<const StructDeclaration *, DenseMap<StringRef, size_t>>
+      structMemberMap;
 
   const ContinueStatement *continueFlag = nullptr;
   const BreakStatement *breakFlag = nullptr;

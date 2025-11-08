@@ -1,6 +1,8 @@
 #include "bara/ast/AST.h"
+#include "bara/ast/ASTPrinter.h"
 #include "bara/context/ASTContext.h"
 #include <cassert>
+#include <memory>
 
 namespace bara {
 
@@ -190,38 +192,54 @@ void ASTEqualVisitor::visit(const Program &other) {
 }
 
 //===----------------------------------------------------------------------===//
-// CompoundStatement
+// StructDeclaration
 //===----------------------------------------------------------------------===//
-CompoundStatement *CompoundStatement::create(SMRange range, ASTContext *context,
-                                             ArrayRef<Statement *> statements) {
-  auto allocSize = totalSizeToAlloc<Statement *>(statements.size());
+
+StructDeclaration *StructDeclaration::create(SMRange range, ASTContext *context,
+                                             StringRef name,
+                                             ArrayRef<StringRef> fields) {
+  auto allocSize = totalSizeToAlloc<StringRef>(fields.size());
   void *mem = context->alloc(allocSize);
-  auto *stmt = new (mem) CompoundStatement(range, statements.size());
-  std::uninitialized_copy(statements.begin(), statements.end(),
-                          stmt->getTrailingObjects<Statement *>());
-  return stmt;
+  auto *structDecl = new (mem) StructDeclaration(range, name, fields.size());
+  std::uninitialized_copy(fields.begin(), fields.end(),
+                          structDecl->getTrailingObjects<StringRef>());
+  return structDecl;
 }
 
-void ASTPrintVisitor::visit(const CompoundStatement &ast) {
-  printer << "{";
-  {
-    ASTPrinter::AddIndentScope scope(printer);
-    for (auto stmt : ast.getStmts()) {
-      printer.ln();
-      stmt->accept(*this);
-    }
+void ASTPrintVisitor::visit(const StructDeclaration &ast) {
+  printer << "struct " << ast.getName() << "(";
+  for (auto [idx, field] : llvm::enumerate(ast.getFieldNames())) {
+    printer << field;
+    if (idx != ast.getFieldNames().size() - 1)
+      printer << ", ";
   }
-  printer.ln() << "}";
+  printer << ");";
 }
 
-void ASTEqualVisitor::visit(const CompoundStatement &other) {
-  if (!thisAST->isa<CompoundStatement>()) {
+void ASTEqualVisitor::visit(const StructDeclaration &other) {
+  if (!thisAST->isa<StructDeclaration>()) {
     equal = false;
     return;
   }
 
-  auto *thisStmt = thisAST->cast<CompoundStatement>();
-  equal = isEqualASTArray<Statement *>(thisStmt->getStmts(), other.getStmts());
+  auto *thisDecl = thisAST->cast<StructDeclaration>();
+  if (thisDecl->getName() != other.getName()) {
+    equal = false;
+    return;
+  }
+
+  if (thisDecl->getFieldNames().size() != other.getFieldNames().size()) {
+    equal = false;
+    return;
+  }
+
+  for (auto [l, r] :
+       llvm::zip(thisDecl->getFieldNames(), other.getFieldNames())) {
+    if (l != r) {
+      equal = false;
+      return;
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -259,31 +277,74 @@ void ASTEqualVisitor::visit(const ExpressionStatement &other) {
 //===----------------------------------------------------------------------===//
 
 IfStatement *IfStatement::create(SMRange range, ASTContext *context,
-                                 Expression *cond, CompoundStatement *thenStmt,
-                                 CompoundStatement *elseStmt) {
-  return context->make<IfStatement>(range, cond, thenStmt, elseStmt);
-}
+                                 Expression *cond,
+                                 ArrayRef<Statement *> thenStmt,
+                                 optional<ArrayRef<Statement *>> elseStmt) {
+  size_t stmtSize = thenStmt.size();
+  if (elseStmt.has_value()) {
+    stmtSize += elseStmt->size();
+  }
 
-IfStatement *IfStatement::create(SMRange range, ASTContext *context,
-                                 Expression *cond, CompoundStatement *thenStmt,
-                                 IfStatement *elseStmt) {
-  return context->make<IfStatement>(range, cond, thenStmt, elseStmt);
+  auto allocSize = totalSizeToAlloc<Statement *>(stmtSize);
+  void *mem = context->alloc(allocSize);
+  optional<size_t> elseSize;
+  if (elseStmt.has_value())
+    elseSize = elseStmt->size();
+
+  auto *ifStmt =
+      new (mem) IfStatement(range, cond, thenStmt.size(), elseSize, false);
+
+  auto *stmts = ifStmt->getTrailingObjects<Statement *>();
+  std::uninitialized_copy(thenStmt.begin(), thenStmt.end(), stmts);
+  if (elseStmt.has_value()) {
+    std::uninitialized_copy(elseStmt->begin(), elseStmt->end(),
+                            stmts + thenStmt.size());
+  }
+  return ifStmt;
 }
 
 IfStatement *IfStatement::create(SMRange range, ASTContext *context,
                                  Expression *cond,
-                                 CompoundStatement *thenStmt) {
-  return context->make<IfStatement>(range, cond, thenStmt, nullopt);
+                                 ArrayRef<Statement *> thenStmt,
+                                 IfStatement *elseStmt) {
+  size_t stmtSize = thenStmt.size() + 1;
+  auto allocSize = totalSizeToAlloc<Statement *>(stmtSize);
+  void *mem = context->alloc(allocSize);
+  auto *ifStmt = new (mem) IfStatement(range, cond, thenStmt.size(), 1, true);
+  auto *stmts = ifStmt->getTrailingObjects<Statement *>();
+  std::uninitialized_copy(thenStmt.begin(), thenStmt.end(), stmts);
+  stmts[thenStmt.size()] = elseStmt;
+  return ifStmt;
 }
 
 void ASTPrintVisitor::visit(const IfStatement &ast) {
   printer << "if ";
   ast.getCond()->accept(*this);
-  ast.getThenStmt()->accept(*this);
+  printer << " {";
+  {
+    ASTPrinter::AddIndentScope scope(printer);
+    for (auto stmt : ast.getThenStmt()) {
+      printer.ln();
+      stmt->accept(*this);
+    }
+  }
+  printer.ln() << "}";
 
   if (ast.hasElse()) {
     printer << " else ";
-    ast.getElseStmt()->accept(*this);
+    if (ast.isElseIfStmt()) {
+      ast.getElseStmt()[0]->accept(*this);
+    } else {
+      printer << "{";
+      {
+        ASTPrinter::AddIndentScope scope(printer);
+        for (auto stmt : ast.getElseStmt()) {
+          printer.ln();
+          stmt->accept(*this);
+        }
+      }
+      printer.ln() << "}";
+    }
   }
 }
 
@@ -299,7 +360,9 @@ void ASTEqualVisitor::visit(const IfStatement &other) {
     return;
   }
 
-  if (!thisStmt->getThenStmt()->isEqual(other.getThenStmt())) {
+  auto thenEq = isEqualASTArray<Statement *>(thisStmt->getThenStmt(),
+                                             other.getThenStmt());
+  if (!thenEq) {
     equal = false;
     return;
   }
@@ -309,8 +372,14 @@ void ASTEqualVisitor::visit(const IfStatement &other) {
     return;
   }
 
+  if (thisStmt->isElseIfStmt() != other.isElseIfStmt()) {
+    equal = false;
+    return;
+  }
+
   equal = !thisStmt->hasElse() ||
-          thisStmt->getElseStmt()->isEqual(other.getElseStmt());
+          isEqualASTArray<Statement *>(thisStmt->getElseStmt(),
+                                       other.getElseStmt());
 }
 
 //===----------------------------------------------------------------------===//
@@ -319,22 +388,44 @@ void ASTEqualVisitor::visit(const IfStatement &other) {
 
 WhileStatement *WhileStatement::create(SMRange range, ASTContext *context,
                                        Expression *cond,
-                                       CompoundStatement *body,
+                                       ArrayRef<Statement *> body,
                                        bool isDoWhile) {
-  return context->make<WhileStatement>(range, cond, body, isDoWhile);
+  auto allocSize = totalSizeToAlloc<Statement *>(body.size());
+  void *mem = context->alloc(allocSize);
+  auto *whileStmt =
+      new (mem) WhileStatement(range, cond, body.size(), isDoWhile);
+  std::uninitialized_copy(body.begin(), body.end(),
+                          whileStmt->getTrailingObjects<Statement *>());
+  return whileStmt;
 }
 
 void ASTPrintVisitor::visit(const WhileStatement &ast) {
   if (ast.isDoWhile()) {
     printer << "do ";
-    ast.getBody()->accept(*this);
-    printer << " while ";
+    printer << "{";
+    {
+      ASTPrinter::AddIndentScope scope(printer);
+      for (auto stmt : ast.getBody()) {
+        printer.ln();
+        stmt->accept(*this);
+      }
+    }
+    printer.ln() << "}"
+                 << " while ";
     ast.getCond()->accept(*this);
     printer << ";";
   } else {
     printer << "while ";
     ast.getCond()->accept(*this);
-    ast.getBody()->accept(*this);
+    printer << " {";
+    {
+      ASTPrinter::AddIndentScope scope(printer);
+      for (auto stmt : ast.getBody()) {
+        printer.ln();
+        stmt->accept(*this);
+      }
+    }
+    printer.ln() << "}";
   }
 }
 
@@ -370,21 +461,30 @@ void ASTEqualVisitor::visit(const WhileStatement &other) {
 ForStatement *ForStatement::create(SMRange range, ASTContext *context,
                                    std::optional<Statement *> decl,
                                    std::optional<Expression *> cond,
-                                   std::optional<Statement *> step,
-                                   CompoundStatement *body) {
+                                   std::optional<Expression *> step,
+                                   ArrayRef<Statement *> body) {
   auto hasDecl = decl.has_value();
   auto hasStep = step.has_value();
-  auto totalCnt = hasDecl + hasStep + 1;
-  auto allocSize = totalSizeToAlloc<Statement *>(totalCnt);
+  auto hasCond = cond.has_value();
+  auto stmtCnt = hasDecl + body.size();
+  auto exprCnt = hasCond + hasStep;
+  auto allocSize =
+      totalSizeToAlloc<Expression *, Statement *>(exprCnt, stmtCnt);
   void *mem = context->alloc(allocSize);
-  auto *forStmt = new (mem) ForStatement(range, hasDecl, cond, hasStep);
+  auto *forStmt =
+      new (mem) ForStatement(range, hasDecl, hasCond, hasStep, body.size());
   std::size_t idx = 0;
   auto *stmts = forStmt->getTrailingObjects<Statement *>();
   if (hasDecl)
-    stmts[idx++] = static_cast<Statement *>(*decl);
+    stmts[idx++] = *decl;
+  std::uninitialized_copy(body.begin(), body.end(), stmts + idx);
+
+  auto *exprs = forStmt->getTrailingObjects<Expression *>();
+  idx = 0;
+  if (hasCond)
+    exprs[idx++] = *cond;
   if (hasStep)
-    stmts[idx++] = static_cast<Statement *>(*step);
-  stmts[idx] = body;
+    exprs[idx++] = *step;
   return forStmt;
 }
 
@@ -394,16 +494,18 @@ std::optional<DeclarationStatement *> ForStatement::getDecl() const {
         getTrailingObjects<Statement *>()[0]);
   return std::nullopt;
 }
-std::optional<Expression *> ForStatement::getCond() const { return cond; }
-std::optional<Statement *> ForStatement::getStep() const {
-  if (hasStep)
-    return static_cast<OperatorAssignmentStatement *>(
-        getTrailingObjects<Statement *>()[hasDecl]);
+std::optional<Expression *> ForStatement::getCond() const {
+  if (hasCond)
+    return *(getTrailingObjects<Expression *>());
   return std::nullopt;
 }
-CompoundStatement *ForStatement::getBody() const {
-  return (*(getTrailingObjects<Statement *>() + hasDecl + hasStep))
-      ->cast<CompoundStatement>();
+std::optional<Expression *> ForStatement::getStep() const {
+  if (hasStep)
+    return *(getTrailingObjects<Expression *>() + hasCond);
+  return std::nullopt;
+}
+ArrayRef<Statement *> ForStatement::getBody() const {
+  return {getTrailingObjects<Statement *>() + hasDecl, bodySize};
 }
 
 void ASTPrintVisitor::visit(const ForStatement &ast) {
@@ -417,34 +519,29 @@ void ASTPrintVisitor::visit(const ForStatement &ast) {
       decl->getInit().value()->accept(*this);
     }
   }
-  printer << "; ";
+  printer << ";";
 
   if (ast.getCond()) {
+    printer << ' ';
     ast.getCond().value()->accept(*this);
   }
-  printer << "; ";
+  printer << ";";
 
   if (ast.getStep()) {
+    printer << ' ';
     auto *step = *ast.getStep();
-    assert((step->isa<OperatorAssignmentStatement, AssignmentStatement,
-                      CompoundStatement>()));
-    if (auto *opAssign = step->dyn_cast<OperatorAssignmentStatement>()) {
-      opAssign->getLhs()->accept(*this);
-      printer << " ";
-      printOperator(printer.getOS(), opAssign->getOperator());
-      printer << "= ";
-      opAssign->getRhs()->accept(*this);
-    } else if (auto *assign = step->dyn_cast<AssignmentStatement>()) {
-      assign->getLhs()->accept(*this);
-      printer << " = ";
-      assign->getRhs()->accept(*this);
-    } else {
-      step->accept(*this);
-    }
+    step->accept(*this);
   }
 
-  printer << ") ";
-  ast.getBody()->accept(*this);
+  printer << ") {";
+  {
+    ASTPrinter::AddIndentScope scope(printer);
+    for (auto stmt : ast.getBody()) {
+      printer.ln();
+      stmt->accept(*this);
+    }
+  }
+  printer.ln() << "}";
 }
 
 void ASTEqualVisitor::visit(const ForStatement &other) {
@@ -567,85 +664,6 @@ void ASTEqualVisitor::visit(const DeclarationStatement &other) {
 }
 
 //===----------------------------------------------------------------------===//
-/// AssignmentStatement
-//===----------------------------------------------------------------------===//
-
-AssignmentStatement *AssignmentStatement::create(SMRange range,
-                                                 ASTContext *context,
-                                                 Expression *lhs,
-                                                 Expression *rhs) {
-  return context->make<AssignmentStatement>(range, lhs, rhs);
-}
-
-void ASTPrintVisitor::visit(const AssignmentStatement &ast) {
-  ast.getLhs()->accept(*this);
-  printer << " = ";
-  ast.getRhs()->accept(*this);
-  printer << ";";
-}
-
-void ASTEqualVisitor::visit(const AssignmentStatement &other) {
-  if (!thisAST->isa<AssignmentStatement>()) {
-    equal = false;
-    return;
-  }
-
-  auto *thisStmt = thisAST->cast<AssignmentStatement>();
-  if (!thisStmt->getLhs()->isEqual(other.getLhs())) {
-    equal = false;
-    return;
-  }
-
-  if (!thisStmt->getRhs()->isEqual(other.getRhs())) {
-    equal = false;
-    return;
-  }
-}
-
-//===----------------------------------------------------------------------===//
-/// OperatorAssignmentStatement
-//===----------------------------------------------------------------------===//
-
-OperatorAssignmentStatement *
-OperatorAssignmentStatement::create(SMRange range, ASTContext *context,
-                                    Expression *lhs, Operator op,
-                                    Expression *rhs) {
-  return context->make<OperatorAssignmentStatement>(range, lhs, op, rhs);
-}
-
-void ASTPrintVisitor::visit(const OperatorAssignmentStatement &ast) {
-  ast.getLhs()->accept(*this);
-  printer << " ";
-  printOperator(printer.getOS(), ast.getOperator());
-  printer << "= ";
-  ast.getRhs()->accept(*this);
-  printer << ";";
-}
-
-void ASTEqualVisitor::visit(const OperatorAssignmentStatement &other) {
-  if (!thisAST->isa<OperatorAssignmentStatement>()) {
-    equal = false;
-    return;
-  }
-
-  auto *thisStmt = thisAST->cast<OperatorAssignmentStatement>();
-  if (!thisStmt->getLhs()->isEqual(other.getLhs())) {
-    equal = false;
-    return;
-  }
-
-  if (thisStmt->getOperator() != other.getOperator()) {
-    equal = false;
-    return;
-  }
-
-  if (!thisStmt->getRhs()->isEqual(other.getRhs())) {
-    equal = false;
-    return;
-  }
-}
-
-//===----------------------------------------------------------------------===//
 /// FunctionDeclaration
 //===----------------------------------------------------------------------===//
 
@@ -734,7 +752,7 @@ void ASTPrintVisitor::visit(const MatchExpression &ast) {
   {
     ASTPrinter::AddIndentScope scope(printer);
     for (auto matchCase : ast.getMatchCases()) {
-      printer.ln() << '\\';
+      printer.ln();
       matchCase.first->accept(*this);
       printer << " => ";
       matchCase.second->accept(*this);
@@ -786,25 +804,8 @@ LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
   return lambdaExpr;
 }
 
-LambdaExpression *LambdaExpression::create(SMRange range, ASTContext *context,
-                                           ArrayRef<StringRef> params,
-                                           CompoundStatement *stmt) {
-  auto allocSize = totalSizeToAlloc<StringRef>(params.size());
-  void *mem = context->alloc(allocSize);
-  auto *lambdaExpr = new (mem) LambdaExpression(range, params.size(), stmt);
-  std::uninitialized_copy(params.begin(), params.end(),
-                          lambdaExpr->getTrailingObjects<StringRef>());
-  return lambdaExpr;
-}
-
 Expression *LambdaExpression::getExprBody() const {
-  assert(isExprBody());
   return body->cast<Expression>();
-}
-
-CompoundStatement *LambdaExpression::getStmtBody() const {
-  assert(!isExprBody());
-  return body->cast<CompoundStatement>();
 }
 
 void ASTPrintVisitor::visit(const LambdaExpression &ast) {
@@ -815,10 +816,7 @@ void ASTPrintVisitor::visit(const LambdaExpression &ast) {
       printer << ", ";
   }
   printer << " => ";
-  if (ast.isExprBody())
-    ast.getExprBody()->accept(*this);
-  else
-    ast.getStmtBody()->accept(*this);
+  ast.getExprBody()->accept(*this);
 }
 
 void ASTEqualVisitor::visit(const LambdaExpression &other) {
@@ -840,14 +838,44 @@ void ASTEqualVisitor::visit(const LambdaExpression &other) {
     }
   }
 
-  if (thisExpr->isExprBody() != other.isExprBody()) {
+  if (!thisExpr->getExprBody()->isEqual(other.getExprBody())) {
+    equal = false;
+    return;
+  }
+}
+
+//===----------------------------------------------------------------------===//
+/// StructAccess
+//===----------------------------------------------------------------------===//
+
+StructAccessExpression *StructAccessExpression::create(SMRange range,
+                                                       ASTContext *context,
+                                                       Expression *base,
+                                                       StringRef fieldName) {
+  return context->make<StructAccessExpression>(range, base, fieldName);
+}
+
+void ASTPrintVisitor::visit(const StructAccessExpression &ast) {
+  ast.getBase()->accept(*this);
+  printer << '.' << ast.getFieldName();
+}
+
+void ASTEqualVisitor::visit(const StructAccessExpression &other) {
+  if (!thisAST->isa<StructAccessExpression>()) {
     equal = false;
     return;
   }
 
-  equal = thisExpr->isExprBody()
-              ? thisExpr->getExprBody()->isEqual(other.getExprBody())
-              : thisExpr->getStmtBody()->isEqual(other.getStmtBody());
+  auto *thisExpr = thisAST->cast<StructAccessExpression>();
+  if (!thisExpr->getBase()->isEqual(other.getBase())) {
+    equal = false;
+    return;
+  }
+
+  if (thisExpr->getFieldName() != other.getFieldName()) {
+    equal = false;
+    return;
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -892,7 +920,51 @@ void ASTEqualVisitor::visit(const BinaryExpression &other) {
 }
 
 //===----------------------------------------------------------------------===//
-/// BinaryExpression
+/// AssignmentExpression
+//===----------------------------------------------------------------------===//
+
+AssignmentExpression *AssignmentExpression::create(SMRange range,
+                                                   ASTContext *context,
+                                                   Expression *lhs,
+                                                   optional<Operator> op,
+                                                   Expression *rhs) {
+  return context->make<AssignmentExpression>(range, lhs, op, rhs);
+}
+
+void ASTPrintVisitor::visit(const AssignmentExpression &ast) {
+  ast.getLhs()->accept(*this);
+  printer << " ";
+  if (ast.getOperator())
+    printOperator(printer.getOS(), *ast.getOperator());
+  printer << "= ";
+  ast.getRhs()->accept(*this);
+}
+
+void ASTEqualVisitor::visit(const AssignmentExpression &other) {
+  if (!thisAST->isa<AssignmentExpression>()) {
+    equal = false;
+    return;
+  }
+
+  auto *thisStmt = thisAST->cast<AssignmentExpression>();
+  if (!thisStmt->getLhs()->isEqual(other.getLhs())) {
+    equal = false;
+    return;
+  }
+
+  if (thisStmt->getOperator() != other.getOperator()) {
+    equal = false;
+    return;
+  }
+
+  if (!thisStmt->getRhs()->isEqual(other.getRhs())) {
+    equal = false;
+    return;
+  }
+}
+
+//===----------------------------------------------------------------------===//
+/// UnaryExpression
 //===----------------------------------------------------------------------===//
 
 UnaryExpression *UnaryExpression::create(SMRange range, ASTContext *context,
@@ -1186,8 +1258,10 @@ void ASTPrintVisitor::visit(const CompoundExpression &ast) {
       printer.ln();
       stmt->accept(*this);
     }
-    printer.ln();
-    ast.getExpr()->accept(*this);
+    if (ast.getExpr()) {
+      printer.ln();
+      ast.getExpr()->accept(*this);
+    }
   }
   printer.ln() << "}";
 }
@@ -1374,7 +1448,7 @@ void ASTEqualVisitor::visit(const TuplePattern &other) {
 }
 
 //===----------------------------------------------------------------------===//
-/// TuplePattern
+/// GroupPattern
 //===----------------------------------------------------------------------===//
 
 GroupPattern *GroupPattern::create(SMRange range, ASTContext *context,
@@ -1516,6 +1590,82 @@ void ASTPrintVisitor::visit(const NilPattern &ast) { printer << "nil"; }
 
 void ASTEqualVisitor::visit(const NilPattern &other) {
   equal = thisAST->isa<NilPattern>();
+}
+
+//===----------------------------------------------------------------------===//
+/// StructPattern
+//===----------------------------------------------------------------------===//
+
+StructPattern *StructPattern::create(SMRange range, ASTContext *context,
+                                     StringRef name, ArrayRef<Field> fields) {
+  auto allocSize = totalSizeToAlloc<Field>(fields.size());
+  void *mem = context->alloc(allocSize);
+  StructPattern *structPattern =
+      new (mem) StructPattern(range, name, fields.size());
+
+  auto *fieldMem = structPattern->getTrailingObjects<Field>();
+  std::uninitialized_copy(fields.begin(), fields.end(), fieldMem);
+  return structPattern;
+}
+
+void ASTPrintVisitor::visit(const StructPattern &ast) {
+  printer << ast.getName() << '(';
+
+  for (auto I = ast.getFields().begin(), E = ast.getFields().end(); I != E;
+       ++I) {
+    if (I != ast.getFields().begin())
+      printer << ", ";
+
+    const auto &[ref, field, pattern] = *I;
+    if (ref)
+      printer << 'ref ';
+    if (field.empty()) {
+      pattern->accept(*this);
+    } else {
+      printer << field << ": ";
+      pattern->accept(*this);
+    }
+  }
+
+  printer << ')';
+}
+
+void ASTEqualVisitor::visit(const StructPattern &ast) {
+  if (!thisAST->isa<StructPattern>()) {
+    equal = false;
+    return;
+  }
+
+  const StructPattern *structP = thisAST->cast<StructPattern>();
+  if (structP->getName() != ast.getName()) {
+    equal = false;
+    return;
+  }
+
+  if (structP->getFields().size() != ast.getFields().size()) {
+    equal = false;
+    return;
+  }
+
+  for (auto [l, r] : llvm::zip(structP->getFields(), ast.getFields())) {
+    const auto &[lRef, lField, lPattern] = l;
+    const auto &[rRef, rField, rPattern] = r;
+
+    if (lRef != rRef) {
+      equal = false;
+      return;
+    }
+
+    if (lField != rField) {
+      equal = false;
+      return;
+    }
+
+    if (!lPattern->isEqual(rPattern)) {
+      equal = false;
+      return;
+    }
+  }
 }
 
 } // namespace bara

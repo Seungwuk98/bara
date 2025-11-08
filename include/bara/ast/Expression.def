@@ -4,7 +4,9 @@
 
 EXPRESSION(MatchExpression)
 EXPRESSION(LambdaExpression)
+EXPRESSION(StructAccessExpression)
 EXPRESSION(BinaryExpression)
+EXPRESSION(AssignmentExpression)
 EXPRESSION(UnaryExpression)
 EXPRESSION(ConditionalExpression)
 EXPRESSION(CallExpression)

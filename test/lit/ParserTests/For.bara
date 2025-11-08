@@ -26,7 +26,7 @@ print(sum);
 
 for (;;) {}
 
-// CHECK-LABEL: for (; ; ) 
+// CHECK-LABEL: for (;;) 
 
 //===----------------------------------------------------------------------===//
 /// No Cond
@@ -40,7 +40,7 @@ for (var i = 0;; i += 1) {
   }
 }
 
-// CHECK-LABEL: for (var i = 0; ; i += 1) 
+// CHECK-LABEL: for (var i = 0;; i += 1) 
 // CHECK-NEXT:  if i < 20
 // CHECK-NEXT:    break;
 // CHECK-NEXT:  else 
@@ -56,7 +56,7 @@ for (var i = 0;; {
   i += 2;
 }) {}
 
-/// CHECK-LABEL: for (var i = 0; ; {
+/// CHECK-LABEL: for (var i = 0;; {
 /// CHECK-NEXT:  i += 1;
 /// CHECK-NEXT:  i += 2;
 /// CHECK-NEXT: }) {

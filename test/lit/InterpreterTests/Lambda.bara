@@ -1,13 +1,13 @@
 // RUN: bara %s -interpret | FileCheck %s
 
 
-var getUniqueNumber = \ => {
+var getUniqueNumber = (\ => {
   var a = 0;
   return \ => {
     a += 1;
     return a;
   };
-}();
+})();
 
 print(getUniqueNumber());
 // CHECK: 1

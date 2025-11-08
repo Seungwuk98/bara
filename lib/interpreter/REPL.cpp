@@ -118,6 +118,10 @@ void REPLShowVisitor::visit(const BuiltinFunctionValue &value) {
   os << "<builtin function " << value.getName() << ">";
 }
 
+void REPLShowVisitor::visit(const StructValue &value) {
+  os << value.toString();
+}
+
 int runREPLMain() {
   REPL repl;
   repl.os << "bara REPL\n";

@@ -397,7 +397,7 @@ BuiltinFunctionValue *BuiltinFunctionValue::create(MemoryContext *context,
                                                    funcBodyType fn) {
   assert(context->getGC()->isLocked() && "GC must be locked");
   return new (context->alloc(sizeof(BuiltinFunctionValue)))
-      BuiltinFunctionValue(context, name, helpMsg, fn);
+      BuiltinFunctionValue(context, name, helpMsg, std::move(fn));
 }
 
 void ValuePrintVisitor::visit(const BuiltinFunctionValue &value) {
@@ -414,4 +414,57 @@ void ValueEqVisitor::visit(const BuiltinFunctionValue &l) {
     value = l.getName() == builtinR->getName();
   result = value;
 }
+
+//===----------------------------------------------------------------------===//
+/// StructValue
+//===----------------------------------------------------------------------===//
+
+StructValue *StructValue::create(MemoryContext *context,
+                                 const StructDeclaration *decl,
+                                 ArrayRef<Value *> memberValues) {
+  assert(context->getGC()->isLocked() && "GC must be locked");
+  auto sizeToAlloc = totalSizeToAlloc<Memory *>(memberValues.size());
+  auto *mem = new (context->alloc(sizeToAlloc))
+      StructValue(context, memberValues.size(), decl);
+
+  for (auto [idx, value] : llvm::enumerate(memberValues)) {
+    auto *memory = ValueMemory::create(context, value);
+    mem->getTrailingObjects<Memory *>()[idx] = memory;
+  }
+  return mem;
+}
+
+void ValuePrintVisitor::visit(const StructValue &value) {
+  printer << "<struct \'" << value.getDeclaration()->getName() << '\'' << ':';
+  for (auto [idx, member] :
+       llvm::enumerate(value.getDeclaration()->getFieldNames())) {
+    if (idx != 0)
+      printer << ',';
+    printer << ' ' << member << "=";
+    auto *mem = value.getMembers()[idx]->cast<ValueMemory>();
+    printer << mem->get()->toString();
+  }
+  printer << '>';
+}
+
+void ToBoolVisitor::visit(const StructValue &value) { result = nullopt; }
+
+void ValueEqVisitor::visit(const StructValue &l) {
+  auto value = false;
+  if (const auto *structR = r->dyn_cast<StructValue>()) {
+    if (l.getDeclaration() == structR->getDeclaration()) {
+      value = true;
+      for (auto idx = 0; idx < l.getMembers().size(); ++idx) {
+        auto *lMem = l.getMembers()[idx]->cast<ValueMemory>()->get();
+        auto *rMem = structR->getMembers()[idx]->cast<ValueMemory>()->get();
+        if (lMem->isEqual(rMem)) {
+          value = false;
+          break;
+        }
+      }
+    }
+  }
+  result = value;
+}
+
 } // namespace bara

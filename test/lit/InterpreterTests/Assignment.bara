@@ -1,0 +1,12 @@
+// RUN: bara %s -interpret | FileCheck %s
+
+var (x, y, z) = (1, 2, 3);
+
+x = y = z = 15;
+
+print(x, y, z);
+// CHECK: 15 15 15
+
+x = y += 50;
+print(x, y, z);
+// CHECK: 65 65 15

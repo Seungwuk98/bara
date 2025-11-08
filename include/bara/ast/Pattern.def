@@ -11,5 +11,6 @@ PATTERN(BooleanPattern)
 PATTERN(FloatPattern)
 PATTERN(EmptyPattern)
 PATTERN(NilPattern)
+PATTERN(StructPattern)
 
 #undef PATTERN
