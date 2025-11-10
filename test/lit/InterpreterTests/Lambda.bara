@@ -54,3 +54,16 @@ var fibo = {
 
 print(fibo(6));
 // CHECK: 8
+
+
+var counter2 = {
+  var count = 0;
+  \ => {
+    count += 1
+  }
+};
+
+print(counter2());
+// CHECK: 1
+print(counter2());
+// CHECK: 2

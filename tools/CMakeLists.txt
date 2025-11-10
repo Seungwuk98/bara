@@ -9,3 +9,5 @@ target_link_libraries(
   BaraInterpreter
   ${llvm_libs}
 )
+
+install(TARGETS bara DESTINATION bin)

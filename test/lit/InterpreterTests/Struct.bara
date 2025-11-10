@@ -63,3 +63,8 @@ match point {
 
 print(point.X, point.Y);
 // CHECK: 10 20
+
+
+(point.X, point.Y) = (50, 60);
+print(point.X, point.Y);
+// CHECK: 50 60
